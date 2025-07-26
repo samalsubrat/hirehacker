@@ -1,7 +1,6 @@
 "use client"
 import { Editor } from "@monaco-editor/react"
-import { useState, useRef } from "react"
-import type { editor } from "monaco-editor"
+import { useState, useRef, useImperativeHandle, forwardRef } from "react"
 
 interface CodeEditorProps {
   value: string
@@ -10,21 +9,34 @@ interface CodeEditorProps {
   height?: string
 }
 
-export function CodeEditor({ value, onChange, language, height = "400px" }: CodeEditorProps) {
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 })
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+export interface CodeEditorRef {
+  formatCode: () => void
+}
 
-  const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor) => {
+export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(({ value, onChange, language, height = "400px" }, ref) => {
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 })
+  const editorRef = useRef<any>(null)
+
+  const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor
     
     // Listen for cursor position changes
-    editor.onDidChangeCursorPosition((e) => {
+    editor.onDidChangeCursorPosition((e: any) => {
       setCursorPosition({
         line: e.position.lineNumber,
         column: e.position.column
       })
     })
   }
+
+  useImperativeHandle(ref, () => ({
+    formatCode: () => {
+      if (editorRef.current) {
+        // Use the format document action (Alt+Shift+F equivalent)
+        editorRef.current.getAction('editor.action.formatDocument')?.run()
+      }
+    }
+  }))
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -50,4 +62,4 @@ export function CodeEditor({ value, onChange, language, height = "400px" }: Code
       </div>
     </div>
   )
-}
+})
