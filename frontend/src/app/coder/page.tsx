@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { LetterText, Play, RotateCcw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const QUESTIONS = [
   {
@@ -380,10 +382,11 @@ const Page = () => {
                         {q.mcq.options.map((option: string, idx: number) => (
                           <label
                             key={idx}
-                            className={`flex items-center gap-2 p-2 rounded cursor-pointer border ${
+                            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border transition-colors w-1/2
+                            ${
                               mcqAnswers[currentQuestion] === idx
-                                ? "border-blue-500 bg-blue-50"
-                                : "border-gray-200"
+                                ? "border-green-500 bg-green-50 text-green-800 shadow-md"
+                                : "border-gray-200 bg-white text-gray-800"
                             }`}
                           >
                             <input
@@ -398,8 +401,24 @@ const Page = () => {
                                   return arr;
                                 });
                               }}
+                              className="sr-only"
                             />
-                            <span>{option}</span>
+                            <div className={`size-4 border-1 rounded-full flex items-center justify-center
+                              ${
+                                 mcqAnswers[currentQuestion] === idx
+                                   ? "border-green-500"
+                                   : "border-gray-300"
+                               }`}>
+                              <span
+                                className={`size-2 rounded-full flex-shrink-0 flex items-center justify-center
+                                 ${
+                                 mcqAnswers[currentQuestion] === idx
+                                   ? "bg-green-500 border-green-500"
+                                   : "bg-white border-gray-300"
+                               }`}
+                              />
+                            </div>
+                            <span className="text-sm">{option}</span>
                           </label>
                         ))}
                       </div>
@@ -419,16 +438,14 @@ const Page = () => {
                 <h1>Subjective</h1>
               </div>
               <div className="p-4">
-                <h1 className="font-medium text-xl pb-4 ">
-                  {q.title}
-                </h1>
+                <h1 className="font-medium text-xl pb-4 ">{q.title}</h1>
                 <form>
                   <fieldset>
                     <legend className="mb-4 font-semibold">
                       {q.subjective.question}
                     </legend>
                     <textarea
-                      className="w-full min-h-[120px] border rounded p-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full min-h-[120px] border rounded-lg p-2 text-base focus:outline-none focus:ring-1 focus:shadow-md"
                       placeholder={q.subjective.placeholder}
                       value={subjectiveAnswers[currentQuestion]}
                       onChange={(e) => {
