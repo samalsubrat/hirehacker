@@ -468,61 +468,58 @@ const Page = () => {
                     className="border rounded-lg overflow-hidden"
                   >
                     <div className="h-full flex flex-col">
-                      <h1 className="px-4 py-2 border-b">Test Cases & Results</h1>
-                      <div className="flex-1 overflow-auto">
-                        <Tabs defaultValue="cases" className="p-2">
-                          <TabsList>
-                            <TabsTrigger value="cases">Test Cases</TabsTrigger>
-                            <TabsTrigger value="results">Results</TabsTrigger>
-                          </TabsList>
-                          <TabsContent value="cases" className="space-y-2">
-                            {q.testCases?.map((tc, idx) => (
-                              <div key={idx} className="border p-2 rounded bg-gray-50">
-                                <div className="font-medium text-sm">{tc.name}</div>
-                                <div className="text-xs text-gray-600">
-                                  <div><strong>Input:</strong> {tc.input}</div>
-                                  <div><strong>Expected:</strong> {tc.expectedOutput}</div>
-                                </div>
+                      <h1 className="px-4 py-2 border-b">Test Cases</h1>
+                      <Tabs defaultValue="case1" className="p-2">
+                        <TabsList>
+                          {q.testCases?.map((tc, idx) => (
+                            <TabsTrigger key={idx} value={`case${idx + 1}`} >
+                              {tc.name}
+                              {testResults.length > 0 && testResults[idx] && (
+                                <span className="ml-1">
+                                  {testResults[idx].isCorrect ? "✅" : "❌"}
+                                </span>
+                              )}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {q.testCases?.map((tc, idx) => (
+                          <TabsContent key={idx} value={`case${idx + 1}`} className="space-y-3 shadow-sm">
+                            <div>
+                              <div className="text-sm text-gray-600 mb-2">
+                                <strong>Input:</strong> {tc.input}
                               </div>
-                            ))}
-                          </TabsContent>
-                          <TabsContent value="results" className="space-y-2">
-                            {testResults.length === 0 && !isRunning && (
-                              <p className="text-center text-gray-500 text-sm p-4">
-                                Run your code to see results
-                              </p>
-                            )}
-                            {testResults.map((result, idx) => (
-                              <div key={idx} className="border p-2 rounded bg-gray-50">
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="font-medium text-sm">{result.testCase}</span>
-                                  {result.isCorrect !== null && (
-                                    <Badge
-                                      className={cn(
-                                        result.isCorrect 
-                                          ? "bg-green-500 hover:bg-green-600" 
-                                          : "bg-red-500 hover:bg-red-600",
-                                        "text-white text-xs"
-                                      )}
-                                    >
-                                      {result.isCorrect ? "✅" : "❌"}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-600 space-y-1">
-                                  <div><strong>Input:</strong> {result.input}</div>
-                                  <div><strong>Expected:</strong> {result.expectedOutput}</div>
-                                  <div><strong>Actual:</strong> {result.actualOutput || "N/A"}</div>
-                                  {result.error && (
-                                    <div className="text-red-600"><strong>Error:</strong> {result.error}</div>
-                                  )}
-                                  <div className="text-gray-500">Status: {result.status}</div>
-                                </div>
+                              <div className="text-sm text-gray-600 mb-2">
+                                <strong>Expected Output:</strong> {tc.expectedOutput}
                               </div>
-                            ))}
+                              {testResults.length > 0 && testResults[idx] && (
+                                <div className="space-y-2">
+                                  <div className="text-sm">
+                                    <strong>Actual Output:</strong>
+                                    <div className={`mt-1 p-2 rounded border text-xs font-mono ${
+                                      testResults[idx].isCorrect 
+                                        ? "bg-green-50 border-green-200 text-green-800" 
+                                        : "bg-red-50 border-red-200 text-red-800"
+                                    }`}>
+                                      {testResults[idx].actualOutput || "No output"}
+                                    </div>
+                                  </div>
+                                  {testResults[idx].error && (
+                                    <div className="text-sm">
+                                      <strong className="text-red-600">Error:</strong>
+                                      <div className="mt-1 p-2 rounded border bg-red-50 border-red-200 text-red-800 text-xs font-mono">
+                                        {testResults[idx].error}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div className="text-xs text-gray-500">
+                                    <strong>Status:</strong> {testResults[idx].status}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </TabsContent>
-                        </Tabs>
-                      </div>
+                        ))}
+                      </Tabs>
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
