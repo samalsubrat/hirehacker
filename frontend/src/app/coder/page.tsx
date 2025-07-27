@@ -15,38 +15,75 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LetterText, Play, RotateCcw, Upload } from "lucide-react";
+import { LetterText, Play, RotateCcw, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const QUESTIONS = [
   {
     title: "1. Prime Number",
     description: "Write a function to check if a number is prime.",
     submissions: ["Submission 1 for Q1", "Submission 2 for Q1"],
-    code: "",
+    code: `def isPrime(n):
+    if n <= 1:
+        return False
+    if n <= 3:
+        return True
+    if n % 2 == 0 or n % 3 == 0:
+        return False
+    i = 5
+    while i * i <= n:
+        if n % i == 0 or n % (i + 2) == 0:
+            return False
+        i += 6
+    return True
+
+# Test the function
+n = int(input())
+print(isPrime(n))`,
     testCases: [
-      { name: "Case 1", content: "n = 7" },
-      { name: "Case 2", content: "n = 10" },
+      { name: "Case 1", input: "7", expectedOutput: "True" },
+      { name: "Case 2", input: "10", expectedOutput: "False" },
+      { name: "Case 3", input: "2", expectedOutput: "True" },
     ],
   },
   {
     title: "2. Fibonacci",
     description: "Write a function to return the nth Fibonacci number.",
     submissions: ["Submission 1 for Q2"],
-    code: "",
+    code: `def fibonacci(n):
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+
+# Test the function
+n = int(input())
+print(fibonacci(n))`,
     testCases: [
-      { name: "Case 1", content: "n = 5" },
-      { name: "Case 2", content: "n = 8" },
+      { name: "Case 1", input: "5", expectedOutput: "5" },
+      { name: "Case 2", input: "8", expectedOutput: "21" },
+      { name: "Case 3", input: "0", expectedOutput: "0" },
     ],
   },
   {
     title: "3. Palindrome",
     description: "Check if a string is a palindrome.",
     submissions: ["Submission 1 for Q3"],
-    code: "",
+    code: `def isPalindrome(s):
+    s = s.lower().replace(' ', '')
+    return s == s[::-1]
+
+# Test the function
+s = input().strip()
+print(isPalindrome(s))`,
     testCases: [
-      { name: "Case 1", content: "s = 'racecar'" },
-      { name: "Case 2", content: "s = 'hello'" },
+      { name: "Case 1", input: "racecar", expectedOutput: "True" },
+      { name: "Case 2", input: "hello", expectedOutput: "False" },
+      { name: "Case 3", input: "A man a plan a canal Panama", expectedOutput: "True" },
     ],
   },
   // MCQ questions
@@ -111,6 +148,17 @@ const QUESTIONS = [
   },
 ];
 
+// Interface for storing test case results
+interface TestCaseResult {
+  testCase: string;
+  input: string;
+  expectedOutput: string;
+  actualOutput: string | null;
+  status: string;
+  isCorrect: boolean | null;
+  error: string | null;
+}
+
 const Page = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [activeTab, setActiveTab] = useState<"description" | "submissions">("description");
@@ -118,7 +166,7 @@ const Page = () => {
   const [languages, setLanguages] = useState(QUESTIONS.map(() => "python"));
   const [mcqAnswers, setMcqAnswers] = useState(Array(QUESTIONS.length).fill(null));
   const [subjectiveAnswers, setSubjectiveAnswers] = useState(Array(QUESTIONS.length).fill(""));
-  const [output, setOutput] = useState("");
+  const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const codeEditorRef = useRef<CodeEditorRef>(null);
 
@@ -129,31 +177,74 @@ const Page = () => {
     c: 50,      // C (GCC)
   };
 
-  // Call Judge0 API
+  // Enhanced Judge0 API call with proper test case handling
   const runCode = async () => {
+    const currentQ = QUESTIONS[currentQuestion];
+    if (!currentQ.testCases) return;
+
     setIsRunning(true);
-    setOutput("");
+    setTestResults([]);
+    
     const source_code = codes[currentQuestion];
     const language_id = languageMap[languages[currentQuestion]];
-    // Use first test case as input if available
-    const input = QUESTIONS[currentQuestion].testCases?.[0]?.content?.replace(/\s*\=.*$/, (m) => m.split('=')[1].trim()) || "";
-    try {
-      const res = await fetch("http://192.168.29.77:2358/submissions?base64_encoded=false&wait=true", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          source_code,
-          language_id,
-          stdin: input,
-        })
+    const newResults: TestCaseResult[] = [];
+
+    for (let i = 0; i < currentQ.testCases.length; i++) {
+      const testCase = currentQ.testCases[i];
+      let actualOutput: string | null = null;
+      let status = "Error";
+      let isCorrect: boolean | null = null;
+      let error: string | null = null;
+
+      try {
+        const response = await fetch("/api/judge0", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            code: source_code,
+            language_id: language_id,
+            stdin: testCase.input,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          actualOutput = data.stdout ? data.stdout.trim() : data.compile_output || data.stderr || "No output";
+          status = data.status?.description || "Unknown Status";
+
+          if (data.status?.id === 3) { // Accepted
+            isCorrect = actualOutput === testCase.expectedOutput;
+          } else {
+            isCorrect = false;
+            error = data.compile_output || data.stderr || data.message || "Execution failed.";
+          }
+        } else {
+          error = data.details?.message || data.error || "Failed to execute code.";
+          status = "API Error";
+          isCorrect = false;
+        }
+      } catch (err) {
+        console.error("Error running code:", err);
+        error = (err as Error).message || "Network or unexpected error.";
+        status = "Client Error";
+        isCorrect = false;
+      }
+
+      newResults.push({
+        testCase: testCase.name,
+        input: testCase.input,
+        expectedOutput: testCase.expectedOutput,
+        actualOutput,
+        status,
+        isCorrect,
+        error,
       });
-      const data = await res.json();
-      setOutput(data.stdout || data.stderr || data.compile_output || "No output");
-    } catch (err) {
-      setOutput("Error running code");
     }
+
+    setTestResults(newResults);
     setIsRunning(false);
   };
 
@@ -186,6 +277,7 @@ const Page = () => {
                   onClick={() => {
                     setCurrentQuestion(idx);
                     setActiveTab("description");
+                    setTestResults([]); // Clear results when switching questions
                   }}
                 >
                   {idx + 1}
@@ -283,7 +375,11 @@ const Page = () => {
                             onClick={runCode}
                             disabled={isRunning}
                           >
-                            <Play className="size-4 group-hover:fill-accent-foreground" />
+                            {isRunning ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Play className="size-4 group-hover:fill-accent-foreground" />
+                            )}
                             {isRunning && <span className="ml-2 text-xs">Running...</span>}
                           </Button>
                           <Button
@@ -337,7 +433,7 @@ const Page = () => {
                             onClick={() => {
                               setCodes((codes) => {
                                 const newCodes = [...codes];
-                                newCodes[currentQuestion] = "";
+                                newCodes[currentQuestion] = QUESTIONS[currentQuestion].code || "";
                                 return newCodes;
                               });
                             }}
@@ -359,13 +455,6 @@ const Page = () => {
                             });
                           }}
                         />
-                        {/* Output/result area */}
-                        {output && (
-                          <div className="mt-2 p-2 bg-gray-100 rounded text-sm whitespace-pre-wrap border">
-                            <strong>Output:</strong>
-                            <div>{output}</div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </ResizablePanel>
@@ -379,21 +468,61 @@ const Page = () => {
                     className="border rounded-lg overflow-hidden"
                   >
                     <div className="h-full flex flex-col">
-                      <h1 className="px-4 py-2 border-b">Test Cases</h1>
-                      <Tabs defaultValue="case1" className="p-2">
-                        <TabsList>
-                          {q.testCases.map((tc, idx) => (
-                            <TabsTrigger key={idx} value={`case${idx + 1}`}>
-                              {tc.name}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                        {q.testCases.map((tc, idx) => (
-                          <TabsContent key={idx} value={`case${idx + 1}`}>
-                            {tc.content}
+                      <h1 className="px-4 py-2 border-b">Test Cases & Results</h1>
+                      <div className="flex-1 overflow-auto">
+                        <Tabs defaultValue="cases" className="p-2">
+                          <TabsList>
+                            <TabsTrigger value="cases">Test Cases</TabsTrigger>
+                            <TabsTrigger value="results">Results</TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="cases" className="space-y-2">
+                            {q.testCases?.map((tc, idx) => (
+                              <div key={idx} className="border p-2 rounded bg-gray-50">
+                                <div className="font-medium text-sm">{tc.name}</div>
+                                <div className="text-xs text-gray-600">
+                                  <div><strong>Input:</strong> {tc.input}</div>
+                                  <div><strong>Expected:</strong> {tc.expectedOutput}</div>
+                                </div>
+                              </div>
+                            ))}
                           </TabsContent>
-                        ))}
-                      </Tabs>
+                          <TabsContent value="results" className="space-y-2">
+                            {testResults.length === 0 && !isRunning && (
+                              <p className="text-center text-gray-500 text-sm p-4">
+                                Run your code to see results
+                              </p>
+                            )}
+                            {testResults.map((result, idx) => (
+                              <div key={idx} className="border p-2 rounded bg-gray-50">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="font-medium text-sm">{result.testCase}</span>
+                                  {result.isCorrect !== null && (
+                                    <Badge
+                                      className={cn(
+                                        result.isCorrect 
+                                          ? "bg-green-500 hover:bg-green-600" 
+                                          : "bg-red-500 hover:bg-red-600",
+                                        "text-white text-xs"
+                                      )}
+                                    >
+                                      {result.isCorrect ? "✅" : "❌"}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-600 space-y-1">
+                                  <div><strong>Input:</strong> {result.input}</div>
+                                  <div><strong>Expected:</strong> {result.expectedOutput}</div>
+                                  <div><strong>Actual:</strong> {result.actualOutput || "N/A"}</div>
+                                  {result.error && (
+                                    <div className="text-red-600"><strong>Error:</strong> {result.error}</div>
+                                  )}
+                                  <div className="text-gray-500">Status: {result.status}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </TabsContent>
+                        </Tabs>
+                      </div>
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
