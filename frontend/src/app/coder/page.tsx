@@ -17,8 +17,6 @@ import {
 } from "@/components/ui/select";
 import { LetterText, Play, RotateCcw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const QUESTIONS = [
   {
@@ -115,18 +113,49 @@ const QUESTIONS = [
 
 const Page = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [activeTab, setActiveTab] = useState<"description" | "submissions">(
-    "description"
-  );
+  const [activeTab, setActiveTab] = useState<"description" | "submissions">("description");
   const [codes, setCodes] = useState(QUESTIONS.map((q) => q.code || ""));
   const [languages, setLanguages] = useState(QUESTIONS.map(() => "python"));
-  const [mcqAnswers, setMcqAnswers] = useState(
-    Array(QUESTIONS.length).fill(null)
-  );
-  const [subjectiveAnswers, setSubjectiveAnswers] = useState(
-    Array(QUESTIONS.length).fill("")
-  );
+  const [mcqAnswers, setMcqAnswers] = useState(Array(QUESTIONS.length).fill(null));
+  const [subjectiveAnswers, setSubjectiveAnswers] = useState(Array(QUESTIONS.length).fill(""));
+  const [output, setOutput] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
   const codeEditorRef = useRef<CodeEditorRef>(null);
+
+  // Map UI language to Judge0 language_id
+  const languageMap: Record<string, number> = {
+    python: 71, // Python 3
+    java: 62,   // Java
+    c: 50,      // C (GCC)
+  };
+
+  // Call Judge0 API
+  const runCode = async () => {
+    setIsRunning(true);
+    setOutput("");
+    const source_code = codes[currentQuestion];
+    const language_id = languageMap[languages[currentQuestion]];
+    // Use first test case as input if available
+    const input = QUESTIONS[currentQuestion].testCases?.[0]?.content?.replace(/\s*\=.*$/, (m) => m.split('=')[1].trim()) || "";
+    try {
+      const res = await fetch("http://192.168.29.77:2358/submissions?base64_encoded=false&wait=true", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          source_code,
+          language_id,
+          stdin: input,
+        })
+      });
+      const data = await res.json();
+      setOutput(data.stdout || data.stderr || data.compile_output || "No output");
+    } catch (err) {
+      setOutput("Error running code");
+    }
+    setIsRunning(false);
+  };
 
   const q = QUESTIONS[currentQuestion];
   const isMcq = !!q.mcq;
@@ -251,8 +280,11 @@ const Page = () => {
                             className="bg-gray-100 hover:bg-gray-300  group flex items-center justify-center rounded-sm text-muted-foreground "
                             size="sm"
                             variant="ghost"
+                            onClick={runCode}
+                            disabled={isRunning}
                           >
                             <Play className="size-4 group-hover:fill-accent-foreground" />
+                            {isRunning && <span className="ml-2 text-xs">Running...</span>}
                           </Button>
                           <Button
                             className="bg-gray-100 hover:bg-gray-300  group flex items-center justify-center rounded-sm text-green-600 hover:text-green-800"
@@ -327,6 +359,13 @@ const Page = () => {
                             });
                           }}
                         />
+                        {/* Output/result area */}
+                        {output && (
+                          <div className="mt-2 p-2 bg-gray-100 rounded text-sm whitespace-pre-wrap border">
+                            <strong>Output:</strong>
+                            <div>{output}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </ResizablePanel>
