@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/select";
 import { LetterText, Play, RotateCcw, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+
 
 const QUESTIONS = [
   {
@@ -388,7 +387,7 @@ const Page = () => {
                             variant="ghost"
                           >
                             <Upload className="size-4" />
-                            <h1 className="pb-1">Submit</h1>
+                            <h1>Submit</h1>
                           </Button>
                         </div>
                       </div>
