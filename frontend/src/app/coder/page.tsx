@@ -17,51 +17,127 @@ import {
 } from "@/components/ui/select";
 import { LetterText, Play, RotateCcw, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const QUESTIONS = [
   {
     title: "1. Prime Number",
-    description: "Write a function to check if a number is prime.",
+    description: "Write a function to check if a number is prime. Complete the function isPrime(n) that returns true if n is prime, false otherwise.",
     submissions: ["Submission 1 for Q1", "Submission 2 for Q1"],
-    code: `def isPrime(n):
-    if n <= 1:
-        return False
-    if n <= 3:
-        return True
-    if n % 2 == 0 or n % 3 == 0:
-        return False
-    i = 5
-    while i * i <= n:
-        if n % i == 0 or n % (i + 2) == 0:
-            return False
-        i += 6
-    return True
-
-# Test the function
+    code: {
+      python: `# Read input
 n = int(input())
-print(isPrime(n))`,
+
+def isPrime(n):
+    # Write your code here
+    # Complete this function to check if n is prime
+    pass
+
+# Call the function and print result
+result = isPrime(n)
+print(result)`,
+      java: `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        int n = scanner.nextInt();
+        
+        // Call the function and print result
+        boolean result = isPrime(n);
+        System.out.println(result);
+        
+        scanner.close();
+    }
+    
+    public static boolean isPrime(int n) {
+        // Write your code here
+        // Complete this function to check if n is prime
+        return false; // placeholder
+    }
+}`,
+      c: `#include <stdio.h>
+#include <stdbool.h>
+
+bool isPrime(int n) {
+    // Write your code here
+    // Complete this function to check if n is prime
+    return false; // placeholder
+}
+
+int main() {
+    int n;
+    scanf("%d", &n);
+    
+    // Call the function and print result
+    bool result = isPrime(n);
+    printf("%s\\n", result ? "true" : "false");
+    
+    return 0;
+}`
+    },
     testCases: [
-      { name: "Case 1", input: "7", expectedOutput: "True" },
-      { name: "Case 2", input: "10", expectedOutput: "False" },
-      { name: "Case 3", input: "2", expectedOutput: "True" },
+      { name: "Case 1", input: "7", expectedOutput: "true" },
+      { name: "Case 2", input: "10", expectedOutput: "false" },
+      { name: "Case 3", input: "2", expectedOutput: "true" },
     ],
   },
   {
     title: "2. Fibonacci",
-    description: "Write a function to return the nth Fibonacci number.",
+    description: "Write a function to return the nth Fibonacci number. Complete the function fibonacci(n) that returns the nth number in the Fibonacci sequence.",
     submissions: ["Submission 1 for Q2"],
-    code: `def fibonacci(n):
-    if n <= 1:
-        return n
-    a, b = 0, 1
-    for _ in range(2, n + 1):
-        a, b = b, a + b
-    return b
-
-# Test the function
+    code: {
+      python: `# Read input
 n = int(input())
-print(fibonacci(n))`,
+
+def fibonacci(n):
+    # Write your code here
+    # Complete this function to return nth Fibonacci number
+    pass
+
+# Call the function and print result
+result = fibonacci(n)
+print(result)`,
+      java: `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        int n = scanner.nextInt();
+        
+        // Call the function and print result
+        int result = fibonacci(n);
+        System.out.println(result);
+        
+        scanner.close();
+    }
+    
+    public static int fibonacci(int n) {
+        // Write your code here
+        // Complete this function to return nth Fibonacci number
+        return 0; // placeholder
+    }
+}`,
+      c: `#include <stdio.h>
+
+int fibonacci(int n) {
+    // Write your code here
+    // Complete this function to return nth Fibonacci number
+    return 0; // placeholder
+}
+
+int main() {
+    int n;
+    scanf("%d", &n);
+    
+    // Call the function and print result
+    int result = fibonacci(n);
+    printf("%d\\n", result);
+    
+    return 0;
+}`
+    },
     testCases: [
       { name: "Case 1", input: "5", expectedOutput: "5" },
       { name: "Case 2", input: "8", expectedOutput: "21" },
@@ -70,19 +146,69 @@ print(fibonacci(n))`,
   },
   {
     title: "3. Palindrome",
-    description: "Check if a string is a palindrome.",
+    description: "Check if a string is a palindrome. Complete the function isPalindrome(s) that returns true if the string is a palindrome (ignoring case and spaces), false otherwise.",
     submissions: ["Submission 1 for Q3"],
-    code: `def isPalindrome(s):
-    s = s.lower().replace(' ', '')
-    return s == s[::-1]
-
-# Test the function
+    code: {
+      python: `# Read input
 s = input().strip()
-print(isPalindrome(s))`,
+
+def isPalindrome(s):
+    # Write your code here
+    # Complete this function to check if string is palindrome
+    pass
+
+# Call the function and print result
+result = isPalindrome(s)
+print(result)`,
+      java: `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        String s = scanner.nextLine().trim();
+        
+        // Call the function and print result
+        boolean result = isPalindrome(s);
+        System.out.println(result);
+        
+        scanner.close();
+    }
+    
+    public static boolean isPalindrome(String s) {
+        // Write your code here
+        // Complete this function to check if string is palindrome
+        return false; // placeholder
+    }
+}`,
+      c: `#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
+
+bool isPalindrome(char* s) {
+    // Write your code here
+    // Complete this function to check if string is palindrome
+    return false; // placeholder
+}
+
+int main() {
+    char s[1000];
+    fgets(s, sizeof(s), stdin);
+    
+    // Remove newline if present
+    s[strcspn(s, "\\n")] = 0;
+    
+    // Call the function and print result
+    bool result = isPalindrome(s);
+    printf("%s\\n", result ? "true" : "false");
+    
+    return 0;
+}`
+    },
     testCases: [
-      { name: "Case 1", input: "racecar", expectedOutput: "True" },
-      { name: "Case 2", input: "hello", expectedOutput: "False" },
-      { name: "Case 3", input: "A man a plan a canal Panama", expectedOutput: "True" },
+      { name: "Case 1", input: "racecar", expectedOutput: "true" },
+      { name: "Case 2", input: "hello", expectedOutput: "false" },
+      { name: "Case 3", input: "A man a plan a canal Panama", expectedOutput: "true" },
     ],
   },
   // MCQ questions
@@ -161,7 +287,7 @@ interface TestCaseResult {
 const Page = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [activeTab, setActiveTab] = useState<"description" | "submissions">("description");
-  const [codes, setCodes] = useState(QUESTIONS.map((q) => q.code || ""));
+  const [codes, setCodes] = useState(QUESTIONS.map((q) => q.code?.python || ""));
   const [languages, setLanguages] = useState(QUESTIONS.map(() => "python"));
   const [mcqAnswers, setMcqAnswers] = useState(Array(QUESTIONS.length).fill(null));
   const [subjectiveAnswers, setSubjectiveAnswers] = useState(Array(QUESTIONS.length).fill(""));
@@ -196,16 +322,24 @@ const Page = () => {
       let error: string | null = null;
 
       try {
+        // Prepare request body with compilation options for C
+        const requestBody: any = {
+          code: source_code,
+          language_id: language_id,
+          stdin: testCase.input,
+        };
+
+        // Add compilation flags for C to link math library
+        if (languages[currentQuestion] === 'c') {
+          requestBody.compiler_options = "-lm";
+        }
+
         const response = await fetch("/api/judge0", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            code: source_code,
-            language_id: language_id,
-            stdin: testCase.input,
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         const data = await response.json();
@@ -387,7 +521,7 @@ const Page = () => {
                             variant="ghost"
                           >
                             <Upload className="size-4" />
-                            <h1>Submit</h1>
+                            <h1 className="pb-1">Submit</h1>
                           </Button>
                         </div>
                       </div>
@@ -399,6 +533,12 @@ const Page = () => {
                               const newLangs = [...langs];
                               newLangs[currentQuestion] = val;
                               return newLangs;
+                            });
+                            // Update code when language changes
+                            setCodes((codes) => {
+                              const newCodes = [...codes];
+                              newCodes[currentQuestion] = QUESTIONS[currentQuestion].code?.[val as keyof typeof QUESTIONS[0]['code']] || "";
+                              return newCodes;
                             });
                           }}
                         >
@@ -432,7 +572,8 @@ const Page = () => {
                             onClick={() => {
                               setCodes((codes) => {
                                 const newCodes = [...codes];
-                                newCodes[currentQuestion] = QUESTIONS[currentQuestion].code || "";
+                                const currentLang = languages[currentQuestion];
+                                newCodes[currentQuestion] = QUESTIONS[currentQuestion].code?.[currentLang as keyof typeof QUESTIONS[0]['code']] || "";
                                 return newCodes;
                               });
                             }}
@@ -469,9 +610,14 @@ const Page = () => {
                     <div className="h-full flex flex-col">
                       <h1 className="px-4 py-2 border-b">Test Cases</h1>
                       <Tabs defaultValue="case1" className="p-2">
+                        <style jsx>{`
+                          [data-state="active"] {
+                            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+                          }
+                        `}</style>
                         <TabsList>
                           {q.testCases?.map((tc, idx) => (
-                            <TabsTrigger key={idx} value={`case${idx + 1}`} >
+                            <TabsTrigger key={idx} value={`case${idx + 1}`}>
                               {tc.name}
                               {testResults.length > 0 && testResults[idx] && (
                                 <span className="ml-1">
@@ -482,7 +628,7 @@ const Page = () => {
                           ))}
                         </TabsList>
                         {q.testCases?.map((tc, idx) => (
-                          <TabsContent key={idx} value={`case${idx + 1}`} className="space-y-3 shadow-sm">
+                          <TabsContent key={idx} value={`case${idx + 1}`} className="space-y-3">
                             <div>
                               <div className="text-sm text-gray-600 mb-2">
                                 <strong>Input:</strong> {tc.input}

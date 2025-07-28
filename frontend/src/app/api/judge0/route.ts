@@ -8,7 +8,23 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function POST(req: Request) {
   try {
-    const { code, language_id, stdin } = await req.json()
+    const { code, language_id, stdin, compiler_options } = await req.json()
+
+    // Prepare the submission body
+    const submissionBody: any = {
+      source_code: code,
+      language_id: language_id,
+      stdin: stdin,
+      cpu_time_limit: 2, // Set CPU time limit to 2 seconds
+      memory_limit: 128000, // Set memory limit to 128 MB (128000 KB)
+      redirect_stderr_to_stdout: true, // Redirect stderr to stdout for easier error capture
+      base64_encoded: false, // Ensure output is not base64 encoded
+    }
+
+    // Add compiler options if provided (e.g., -lm for C math library)
+    if (compiler_options) {
+      submissionBody.compiler_options = compiler_options
+    }
 
     // 1. Submit the code to Judge0
     const submissionResponse = await fetch(`${JUDGE0_API_URL}/submissions`, {
@@ -16,15 +32,7 @@ export async function POST(req: Request) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        source_code: code,
-        language_id: language_id,
-        stdin: stdin,
-        cpu_time_limit: 2, // Set CPU time limit to 2 seconds
-        memory_limit: 128000, // Set memory limit to 128 MB (128000 KB)
-        redirect_stderr_to_stdout: true, // Redirect stderr to stdout for easier error capture
-        base64_encoded: false, // Ensure output is not base64 encoded
-      }),
+      body: JSON.stringify(submissionBody),
     })
 
     if (!submissionResponse.ok) {
