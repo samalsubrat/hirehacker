@@ -9,7 +9,6 @@ import { CodeEditorSection } from "./components/CodeEditor";
 import { MCQSection } from "./components/MCQSection";
 import { SubjectiveSection } from "./components/Subjective";
 import { QuestionNavigation } from "./components/QuestionNav";
-import { QuestionDescription } from "./components/QuestionDescription";
 import { Question, TestCaseResult } from "./types";
 
 const QUESTIONS = [
@@ -71,9 +70,9 @@ int main() {
 }`,
     },
     testCases: [
-      { name: "Case 1", input: "7", expectedOutput: "true" },
-      { name: "Case 2", input: "10", expectedOutput: "false" },
-      { name: "Case 3", input: "2", expectedOutput: "true" },
+      { name: "Case 1", input: "7", expectedOutput: "True" },
+      { name: "Case 2", input: "10", expectedOutput: "False" },
+      { name: "Case 3", input: "2", expectedOutput: "True" },
     ],
   },
   {
@@ -377,6 +376,32 @@ const Page = () => {
     }
 
     setTestResults(newResults);
+
+    // 🧪 Step 6: Save Submission Here
+    try {
+      const user =
+        typeof window !== "undefined"
+          ? JSON.parse(localStorage.getItem("user") || "null")
+          : null;
+
+      await fetch("/api/submissions/save", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: user?.id || null,
+          code: source_code,
+          language: languages[currentQuestion],
+          result: newResults,
+          questionIndex: currentQuestion,
+          isCorrect: newResults.every((r) => r.isCorrect),
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (err) {
+      console.error("Failed to save submission:", err);
+    }
+
     setIsRunning(false);
   };
 

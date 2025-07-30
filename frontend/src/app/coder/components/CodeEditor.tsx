@@ -204,12 +204,6 @@ export const CodeEditorSection: React.FC<CodingQuestionSectionProps> = ({
               <h1 className="px-4 py-2 border-b">Test Cases</h1>
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <Tabs defaultValue="case1" className="p-2">
-                  <style jsx>{`
-                    [data-state="active"] {
-                      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1),
-                        0 4px 6px -4px rgb(0 0 0 / 0.1);
-                    }
-                  `}</style>
                   <TabsList>
                     {question.testCases?.map((tc, idx) => (
                       <TabsTrigger key={idx} value={`case${idx + 1}`}>
