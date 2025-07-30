@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { NextResponse } from "next/server"
 
 // Retrieve Judge0 API configuration from environment variables

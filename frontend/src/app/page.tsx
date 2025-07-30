@@ -1,4 +1,3 @@
-import MaxWidthWrapper from "@/components/MaxWidthWrapper";
 import { FlickeringGrid } from "@/components/flickering-grid";
 export default function Home() {
   return (

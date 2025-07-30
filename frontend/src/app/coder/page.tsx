@@ -1,7 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import React, { useState } from "react";
 import {
-  ResizableHandle,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import Nav from "./Nav";
@@ -9,7 +9,7 @@ import { CodeEditorSection } from "./components/CodeEditor";
 import { MCQSection } from "./components/MCQSection";
 import { SubjectiveSection } from "./components/Subjective";
 import { QuestionNavigation } from "./components/QuestionNav";
-import { Question, TestCaseResult } from "./types";
+import {TestCaseResult } from "./types";
 
 const QUESTIONS = [
   {

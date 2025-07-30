@@ -1,4 +1,4 @@
-"use client"
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Editor } from "@monaco-editor/react"
 import { useState, useRef, useImperativeHandle, forwardRef } from "react"
 
@@ -13,8 +13,9 @@ export interface CodeEditorRef {
   formatCode: () => void
 }
 
-export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(({ value, onChange, language, height = "400px" }, ref) => {
+const CodeEditorComponent = forwardRef<CodeEditorRef, CodeEditorProps>(({ value, onChange, language }, ref) => {
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 })
+  
   const editorRef = useRef<any>(null)
 
   const handleEditorDidMount = (editor: any) => {
@@ -63,3 +64,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(({ value, o
     </div>
   )
 })
+
+CodeEditorComponent.displayName = "CodeEditor"
+
+export const CodeEditor = CodeEditorComponent
