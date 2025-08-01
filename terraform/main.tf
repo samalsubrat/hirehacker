@@ -355,27 +355,48 @@ resource "aws_instance" "private_ec2" {
     }
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      "cloud-init status --wait",
-      "chmod +x /home/ubuntu/backend.sh",
-      "sudo /home/ubuntu/backend.sh pre",
-      "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
-      "sudo update-grub",
-      "sudo reboot"
-    ]
+  # Step 1: Setup backend and GRUB (without reboot)
+provisioner "remote-exec" {
+  inline = [
+    "cloud-init status --wait",
+    "chmod +x /home/ubuntu/backend.sh",
+    "sudo /home/ubuntu/backend.sh pre",
+    "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
+    "sudo update-grub"
+  ]
 
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = tls_private_key.ssh_key.private_key_pem
-      host                = self.private_ip
-      bastion_host        = aws_instance.public_ec2[0].public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = tls_private_key.ssh_key.private_key_pem
-      timeout             = "5m"
-    }
+  connection {
+    type                = "ssh"
+    user                = "ubuntu"
+    private_key         = tls_private_key.ssh_key.private_key_pem
+    host                = self.private_ip
+    bastion_host        = aws_instance.public_ec2[0].public_ip
+    bastion_user        = "ubuntu"
+    bastion_private_key = tls_private_key.ssh_key.private_key_pem
+    timeout             = "5m"
   }
+}
+
+# Step 2: Reboot the system (as a separate step)
+provisioner "remote-exec" {
+  when    = create
+  inline  = [
+    "sleep 2",
+    "sudo reboot"
+  ]
+
+  connection {
+    type                = "ssh"
+    user                = "ubuntu"
+    private_key         = tls_private_key.ssh_key.private_key_pem
+    host                = self.private_ip
+    bastion_host        = aws_instance.public_ec2[0].public_ip
+    bastion_user        = "ubuntu"
+    bastion_private_key = tls_private_key.ssh_key.private_key_pem
+    timeout             = "5m"
+  }
+}
+
 
   provisioner "remote-exec" {
     when    = create
