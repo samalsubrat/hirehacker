@@ -141,6 +141,8 @@ EOF
 
 systemctl daemon-reload
 systemctl enable hirehacker-frontend.service
+sudo systemctl start hirehacker-frontend.service
+
 
 # Create log directory
 mkdir -p /app/logs
