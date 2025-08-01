@@ -21,7 +21,7 @@ variable "vpc_cidr" {
 
 variable "key_name" {
   description = "AWS key pair name"
-  default     = "your-key-pair-name"
+  default     = "devopsclass"
 }
 
 # Lookup latest Ubuntu 22.04 AMI
@@ -181,6 +181,15 @@ resource "aws_security_group" "backend" {
   tags = { Name = "${var.project_name}-backend-sg" }
 }
 
+# Local values used after backend creation
+locals {
+  frontend_script = templatefile("${path.module}/modules/instances/scripts/frontend.sh.tpl", {
+    backend_ip     = aws_instance.backend_private.private_ip
+    frontend_image = "samalsubrat/hirehacker-frontend:latest"
+  })
+  backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
+}
+
 # Backend EC2 Instance (Private)
 resource "aws_instance" "backend_private" {
   ami                         = data.aws_ami.ubuntu.id
@@ -195,6 +204,13 @@ resource "aws_instance" "backend_private" {
   provisioner "file" {
     content     = local.backend_script
     destination = "/home/ubuntu/backend.sh"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.private_ip
+    }
   }
 
   provisioner "remote-exec" {
@@ -226,15 +242,6 @@ resource "aws_instance" "backend_private" {
   }
 }
 
-# Local values used after backend creation
-locals {
-  frontend_script = templatefile("${path.module}/modules/instances/scripts/frontend.sh.tpl", {
-    backend_ip     = aws_instance.backend_private.private_ip
-    frontend_image = "samalsubrat/hirehacker-frontend:latest"
-  })
-  backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
-}
-
 # Frontend EC2 Instance (Public)
 resource "aws_instance" "frontend" {
   ami                         = data.aws_ami.ubuntu.id
@@ -249,6 +256,13 @@ resource "aws_instance" "frontend" {
   provisioner "file" {
     content     = local.frontend_script
     destination = "/home/ubuntu/frontend.sh"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.public_ip
+    }
   }
 
   provisioner "remote-exec" {
