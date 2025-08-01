@@ -11,15 +11,16 @@ echo "========================================="
 echo "Updating system packages..."
 apt update -y
 
-# Install Docker prerequisites
-echo "Installing Docker prerequisites..."
+# Install Docker prerequisites and Nginx
+echo "Installing Docker prerequisites and Nginx..."
 apt install -y \
     apt-transport-https \
     ca-certificates \
     curl \
     software-properties-common \
     gnupg \
-    lsb-release
+    lsb-release \
+    nginx
 
 # Add Docker GPG key and repo
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/docker.gpg
@@ -45,6 +46,10 @@ echo "Creating application directory..."
 mkdir -p /app
 chown ubuntu:ubuntu /app
 
+# Get backend IP from environment variable (passed from Terraform)
+BACKEND_PRIVATE_IP=${BACKEND_PRIVATE_IP:-"localhost"}
+echo "Using backend IP: $BACKEND_PRIVATE_IP"
+
 # Create Docker Compose file for frontend
 echo "Creating Docker Compose configuration..."
 cat > /app/docker-compose.yml <<EOF
@@ -54,10 +59,11 @@ services:
     image: samalsubrat/hirehacker-frontend:latest
     container_name: hirehacker-frontend
     ports:
-      - "80:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://${BACKEND_PRIVATE_IP}:2358
+      - NEXT_PUBLIC_BACKEND_URL=http://${BACKEND_PRIVATE_IP}:8000
     restart: unless-stopped
     volumes:
       - /app/logs:/app/logs
@@ -84,8 +90,19 @@ docker compose down
 echo "Starting Hirehacker frontend..."
 docker compose up -d
 
+echo "Waiting for frontend to start..."
+sleep 15
+
 echo "Current status:"
 docker compose ps
+
+# Health check
+echo "Performing health check..."
+if curl -f http://localhost:3000 > /dev/null 2>&1; then
+    echo "Frontend is responding on port 3000"
+else
+    echo "Frontend may not be ready yet, check docker logs"
+fi
 EOF
 
 chmod +x /app/start-frontend.sh
@@ -126,6 +143,7 @@ server {
     listen 80;
     server_name _;
 
+    # Main application
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -136,12 +154,24 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 86400;
+    }
+
+    # Health check endpoint
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
     }
 }
 EOF
 
-ln -s /etc/nginx/sites-available/hirehacker /etc/nginx/sites-enabled/hirehacker
+ln -sf /etc/nginx/sites-available/hirehacker /etc/nginx/sites-enabled/hirehacker
 rm -f /etc/nginx/sites-enabled/default
+
+# Test nginx configuration
+nginx -t
+
 systemctl restart nginx
 systemctl enable nginx
 
@@ -151,17 +181,23 @@ if systemctl is-active --quiet ufw; then
     ufw allow http
     ufw allow https
     ufw allow 3000/tcp
-    ufw reload
+    ufw allow ssh
+    ufw --force enable
 fi
 
 # Start the application
 echo "Starting the frontend application..."
 cd /app
-./start-frontend.sh
+sudo -u ubuntu ./start-frontend.sh
+
+# Wait for application to start
+sleep 30
 
 echo "========================================="
 echo "Frontend Setup Completed Successfully!"
 echo "Hirehacker frontend will be accessible on port 80"
+echo "Direct access available on port 3000"
+echo "Backend configured to connect to: $BACKEND_PRIVATE_IP"
 echo "========================================="
 
 # Display final status
@@ -171,8 +207,12 @@ echo ""
 echo "Running containers:"
 docker ps
 echo ""
-echo "System status:"
-systemctl status docker --no-pager -l
+echo "Nginx status:"
+systemctl status nginx --no-pager -l
 echo ""
 echo "Frontend service status:"
 systemctl status hirehacker-frontend --no-pager -l
+echo ""
+echo "Application health check:"
+curl -f http://localhost/health && echo " - Nginx is responding"
+curl -f http://localhost:3000 && echo " - Frontend app is responding" || echo " - Frontend app may still be starting"

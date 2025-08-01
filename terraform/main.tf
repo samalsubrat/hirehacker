@@ -1,8 +1,13 @@
+# Add required TLS provider
 terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
+    }
+    tls = {
+      source = "hashicorp/tls"
+      version = "~> 4.0"
     }
   }
 }
@@ -11,108 +16,159 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-variable "project_name" {
-  default = "hirehacker"
+# 1. VPC
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags = {
+    Name = "hirehacker-vpc"
+  }
 }
 
-variable "vpc_cidr" {
-  default = "10.0.0.0/16"
+# 2. Subnets
+variable "vpc_availability_zones" {
+  type    = list(string)
+  default = ["ap-south-1a"]
 }
 
-variable "key_name" {
-  description = "AWS key pair name"
-  default     = "devopsclass"
+resource "aws_subnet" "public_subnet" {
+  count             = length(var.vpc_availability_zones)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index + 1)
+  availability_zone = element(var.vpc_availability_zones, count.index)
+
+  tags = {
+    Name = "hirehacker public subnet ${count.index + 1}"
+  }
 }
 
-# Lookup latest Ubuntu 22.04 AMI
-data "aws_ami" "ubuntu" {
+resource "aws_subnet" "private_subnet" {
+  count             = length(var.vpc_availability_zones)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index + 3)
+  availability_zone = element(var.vpc_availability_zones, count.index)
+
+  tags = {
+    Name = "hirehacker private subnet ${count.index + 1}"
+  }
+}
+
+# 3. Internet Gateway
+resource "aws_internet_gateway" "igw_vpc" {
+  vpc_id = aws_vpc.main.id
+  tags = {
+    Name = "Hirehacker Internet Gateway"
+  }
+}
+
+# 4. Route Table for Public Subnet
+resource "aws_route_table" "route_table_public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw_vpc.id
+  }
+
+  tags = {
+    Name = "Public subnet route table"
+  }
+}
+
+# 5. Route Table association with public subnet
+resource "aws_route_table_association" "public_subnet_association" {
+  count          = length(var.vpc_availability_zones)
+  subnet_id      = element(aws_subnet.public_subnet[*].id, count.index)
+  route_table_id = aws_route_table.route_table_public.id
+}
+
+# 6. Elastic IP
+resource "aws_eip" "eip" {
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.igw_vpc]
+}
+
+# 7. NAT Gateway
+resource "aws_nat_gateway" "hh_nat_gateway" {
+  subnet_id     = element(aws_subnet.public_subnet[*].id, 0)
+  allocation_id = aws_eip.eip.id
+  depends_on    = [aws_internet_gateway.igw_vpc]
+  tags = {
+    Name = "Hirehacker NAT Gateway"
+  }
+}
+
+# 8. Route Table for Private Subnet
+resource "aws_route_table" "route_table_private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_nat_gateway.hh_nat_gateway.id
+  }
+
+  tags = {
+    Name = "Private Subnet Route Table"
+  }
+}
+
+# 9. Route Table association with private subnet
+resource "aws_route_table_association" "private_subnet_association" {
+  count          = length(var.vpc_availability_zones)
+  subnet_id      = element(aws_subnet.private_subnet[*].id, count.index)
+  route_table_id = aws_route_table.route_table_private.id
+}
+
+# 10. Generate SSH Key Pair
+resource "tls_private_key" "ssh_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "generated_key" {
+  key_name   = "hirehacker-key"
+  public_key = tls_private_key.ssh_key.public_key_openssh
+}
+
+output "private_key_pem" {
+  value     = tls_private_key.ssh_key.private_key_pem
+  sensitive = true
+}
+
+# 11. AMI for Ubuntu 22.04
+# 11. AMI for Ubuntu 22.04
+data "aws_ami" "ubuntu_2204" {
   most_recent = true
   owners      = ["099720109477"]
+
   filter {
     name   = "name"
     values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
+
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
 }
 
-# VPC
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-  tags = { Name = "${var.project_name}-vpc" }
+# 12. Security Groups
+variable "vpc_cidr" {
+  default = "10.0.0.0/16"
 }
 
-# Subnets
-resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = "ap-south-1a"
-  map_public_ip_on_launch = true
-  tags = { Name = "${var.project_name}-public-subnet" }
-}
-
-resource "aws_subnet" "private_subnet" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "ap-south-1a"
-  tags = { Name = "${var.project_name}-private-subnet" }
-}
-
-# Internet Gateway and Routing
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.project_name}-igw" }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
-  tags = { Name = "${var.project_name}-public-rt" }
-}
-
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public_subnet.id
-  route_table_id = aws_route_table.public.id
-}
-
-# NAT Gateway and private routing
-resource "aws_eip" "nat" {
-  domain = "vpc"
-}
-
-resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_subnet.id
-  depends_on    = [aws_internet_gateway.igw]
-  tags = { Name = "${var.project_name}-nat" }
-}
-
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
-  }
-  tags = { Name = "${var.project_name}-private-rt" }
-}
-
-resource "aws_route_table_association" "private" {
-  subnet_id      = aws_subnet.private_subnet.id
-  route_table_id = aws_route_table.private.id
-}
-
-# Security Groups
 resource "aws_security_group" "frontend" {
-  name        = "${var.project_name}-frontend-sg"
+  name        = "hirehacker-frontend-sg"
+  description = "Allow SSH and HTTP from anywhere"
   vpc_id      = aws_vpc.main.id
-  description = "Allow HTTP and SSH"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   ingress {
     from_port   = 80
@@ -122,8 +178,16 @@ resource "aws_security_group" "frontend" {
   }
 
   ingress {
-    from_port   = 22
-    to_port     = 22
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow frontend to access backend
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -135,13 +199,15 @@ resource "aws_security_group" "frontend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.project_name}-frontend-sg" }
+  tags = {
+    Name = "hirehacker-frontend-sg"
+  }
 }
 
 resource "aws_security_group" "backend" {
-  name        = "${var.project_name}-backend-sg"
+  name        = "hirehacker-backend-sg"
+  description = "Backend SG"
   vpc_id      = aws_vpc.main.id
-  description = "Allow traffic from VPC and frontend"
 
   ingress {
     from_port       = 22
@@ -178,37 +244,44 @@ resource "aws_security_group" "backend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.project_name}-backend-sg" }
+  tags = {
+    Name = "hirehacker-backend-sg"
+  }
 }
 
-# Local values used after backend creation
-locals {
-  frontend_script = templatefile("${path.module}/modules/instances/scripts/frontend.sh.tpl", {
-    backend_ip     = aws_instance.backend_private.private_ip
-    frontend_image = "samalsubrat/hirehacker-frontend:latest"
-  })
-  backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
-}
-
-# Frontend EC2 Instance (Public)
-resource "aws_instance" "frontend" {
-  ami                         = data.aws_ami.ubuntu.id
+# 13. EC2 Frontend (Public) with provisioner
+resource "aws_instance" "public_ec2" {
+  count                       = length(aws_subnet.public_subnet)
+  ami                         = data.aws_ami.ubuntu_2204.id
   instance_type               = "t2.micro"
-  subnet_id                   = aws_subnet.public_subnet.id
-  vpc_security_group_ids      = [aws_security_group.frontend.id]
-  key_name                    = var.key_name
+  subnet_id                   = element(aws_subnet.public_subnet[*].id, count.index)
   associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.frontend.id]
+  key_name                    = aws_key_pair.generated_key.key_name
 
-  tags = { Name = "${var.project_name}-frontend-instance" }
+  # Wait for instance to be ready
+  provisioner "remote-exec" {
+    inline = [
+      "cloud-init status --wait"
+    ]
+    
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = self.public_ip
+      timeout     = "5m"
+    }
+  }
 
   provisioner "file" {
-    content     = local.frontend_script
+    source      = "${path.module}/frontend.sh"
     destination = "/home/ubuntu/frontend.sh"
 
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("${var.key_name}.pem")
+      private_key = tls_private_key.ssh_key.private_key_pem
       host        = self.public_ip
     }
   }
@@ -216,90 +289,152 @@ resource "aws_instance" "frontend" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /home/ubuntu/frontend.sh",
-      "sudo /home/ubuntu/frontend.sh"
+      "export BACKEND_PRIVATE_IP=${aws_instance.private_ec2[0].private_ip}",
+      "sudo -E /home/ubuntu/frontend.sh"
     ]
+
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("${var.key_name}.pem")
+      private_key = tls_private_key.ssh_key.private_key_pem
       host        = self.public_ip
     }
   }
 
+  # Verify Docker installation and application status
   provisioner "remote-exec" {
     inline = [
+      "echo 'Verifying Docker installation and application status...'",
       "docker --version",
       "docker ps",
-      "curl -f http://localhost || echo 'Frontend app not responding'"
+      "echo 'Checking if frontend application is running...'",
+      "if docker ps | grep -q frontend; then echo 'Frontend container is running'; else echo 'Frontend container is not running'; fi",
+      "echo 'Checking frontend application health...'",
+      "sleep 10", # Wait for application to start
+      "curl -f http://localhost:3000 && echo 'Frontend application is responding' || echo 'Frontend application is not responding'"
     ]
+
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("${var.key_name}.pem")
+      private_key = tls_private_key.ssh_key.private_key_pem
       host        = self.public_ip
     }
+  }
+
+  tags = {
+    Name = "hirehacker-public-ec2-${count.index + 1}"
   }
 }
 
-# Backend EC2 Instance (Private) with bastion host connection
-resource "aws_instance" "backend_private" {
-  ami                         = data.aws_ami.ubuntu.id
+# 14. EC2 Backend (Private) - Using bastion host approach
+resource "aws_instance" "private_ec2" {
+  count                       = length(aws_subnet.private_subnet)
+  ami                         = data.aws_ami.ubuntu_2204.id
   instance_type               = "t2.micro"
-  subnet_id                   = aws_subnet.private_subnet.id
-  vpc_security_group_ids      = [aws_security_group.backend.id]
-  key_name                    = var.key_name
+  subnet_id                   = element(aws_subnet.private_subnet[*].id, count.index)
   associate_public_ip_address = false
+  vpc_security_group_ids      = [aws_security_group.backend.id]
+  key_name                    = aws_key_pair.generated_key.key_name
 
-  tags = { Name = "${var.project_name}-backend-instance" }
-
-  provisioner "file" {
-    content     = local.backend_script
+  # Use bastion host (frontend instance) for SSH access
+ 
+   provisioner "file" {
+    source      = "${path.module}/backend.sh"
     destination = "/home/ubuntu/backend.sh"
 
     connection {
-      type               = "ssh"
-      user               = "ubuntu"
-      private_key        = file("${var.key_name}.pem")
-      host               = self.private_ip
-      bastion_host       = aws_instance.frontend.public_ip
-      bastion_user       = "ubuntu"
-      bastion_private_key = file("${var.key_name}.pem")
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+      timeout             = "5m"
     }
   }
 
   provisioner "remote-exec" {
     inline = [
+      "cloud-init status --wait",
       "chmod +x /home/ubuntu/backend.sh",
-      "sudo /home/ubuntu/backend.sh"
+      "sudo /home/ubuntu/backend.sh pre",
+      "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
+      "sudo update-grub",
+      "sudo reboot"
     ]
+
     connection {
-      type               = "ssh"
-      user               = "ubuntu"
-      private_key        = file("${var.key_name}.pem")
-      host               = self.private_ip
-      bastion_host       = aws_instance.frontend.public_ip
-      bastion_user       = "ubuntu"
-      bastion_private_key = file("${var.key_name}.pem")
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+      timeout             = "5m"
     }
   }
 
   provisioner "remote-exec" {
+    when    = "create"
+    inline  = [
+      "sleep 60",
+      "sudo /home/ubuntu/backend.sh full"
+    ]
+
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+    }
+  }
+
+  # Verify Docker installation and application status
+  provisioner "remote-exec" {
     inline = [
+      "echo 'Verifying Docker installation and application status...'",
       "docker --version",
       "docker ps",
-      "curl -f http://localhost:2358/about || echo 'Judge0 API not reachable'",
-      "curl -f http://localhost:8000/health || echo 'Backend API not reachable'"
+      "echo 'Checking if backend application is running...'",
+      "if docker ps | grep -q backend; then echo 'Backend container is running'; else echo 'Backend container is not running'; fi",
+      "echo 'Checking backend application health...'",
+      "sleep 15", # Wait for application to start
+      "curl -f http://localhost:8080/health && echo 'Backend application is responding' || echo 'Backend application is not responding'"
     ]
+
     connection {
-      type               = "ssh"
-      user               = "ubuntu"
-      private_key        = file("${var.key_name}.pem")
-      host               = self.private_ip
-      bastion_host       = aws_instance.frontend.public_ip
-      bastion_user       = "ubuntu"
-      bastion_private_key = file("${var.key_name}.pem")
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
     }
   }
 
-  depends_on = [aws_instance.frontend]  # backend depends on frontend (bastion)
+  depends_on = [aws_instance.public_ec2, aws_nat_gateway.hh_nat_gateway]
+
+  tags = {
+    Name = "hirehacker-private-ec2-${count.index + 1}"
+  }
+}
+
+# Output important information
+output "frontend_public_ip" {
+  value = aws_instance.public_ec2[*].public_ip
+}
+
+output "backend_private_ip" {
+  value = aws_instance.private_ec2[*].private_ip
+}
+
+output "ssh_connection_command" {
+  value = "ssh -i hirehacker-key.pem ubuntu@${aws_instance.public_ec2[0].public_ip}"
 }
