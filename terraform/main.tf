@@ -190,58 +190,6 @@ locals {
   backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
 }
 
-# Backend EC2 Instance (Private)
-resource "aws_instance" "backend_private" {
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = "t2.micro"
-  subnet_id                   = aws_subnet.private_subnet.id
-  vpc_security_group_ids      = [aws_security_group.backend.id]
-  key_name                    = var.key_name
-  associate_public_ip_address = false
-
-  tags = { Name = "${var.project_name}-backend-instance" }
-
-  provisioner "file" {
-    content     = local.backend_script
-    destination = "/home/ubuntu/backend.sh"
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
-      host        = self.private_ip
-    }
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x /home/ubuntu/backend.sh",
-      "sudo /home/ubuntu/backend.sh"
-    ]
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
-      host        = self.private_ip
-    }
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "docker --version",
-      "docker ps",
-      "curl -f http://localhost:2358/about || echo 'Judge0 API not reachable'",
-      "curl -f http://localhost:8000/health || echo 'Backend API not reachable'"
-    ]
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
-      host        = self.private_ip
-    }
-  }
-}
-
 # Frontend EC2 Instance (Public)
 resource "aws_instance" "frontend" {
   ami                         = data.aws_ami.ubuntu.id
@@ -260,7 +208,7 @@ resource "aws_instance" "frontend" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
+      private_key = file("${var.key_name}.pem")
       host        = self.public_ip
     }
   }
@@ -273,7 +221,7 @@ resource "aws_instance" "frontend" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
+      private_key = file("${var.key_name}.pem")
       host        = self.public_ip
     }
   }
@@ -287,10 +235,71 @@ resource "aws_instance" "frontend" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem")
+      private_key = file("${var.key_name}.pem")
       host        = self.public_ip
     }
   }
+}
 
-  depends_on = [aws_instance.backend_private]
+# Backend EC2 Instance (Private) with bastion host connection
+resource "aws_instance" "backend_private" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.private_subnet.id
+  vpc_security_group_ids      = [aws_security_group.backend.id]
+  key_name                    = var.key_name
+  associate_public_ip_address = false
+
+  tags = { Name = "${var.project_name}-backend-instance" }
+
+  provisioner "file" {
+    content     = local.backend_script
+    destination = "/home/ubuntu/backend.sh"
+
+    connection {
+      type               = "ssh"
+      user               = "ubuntu"
+      private_key        = file("${var.key_name}.pem")
+      host               = self.private_ip
+      bastion_host       = aws_instance.frontend.public_ip
+      bastion_user       = "ubuntu"
+      bastion_private_key = file("${var.key_name}.pem")
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /home/ubuntu/backend.sh",
+      "sudo /home/ubuntu/backend.sh"
+    ]
+    connection {
+      type               = "ssh"
+      user               = "ubuntu"
+      private_key        = file("${var.key_name}.pem")
+      host               = self.private_ip
+      bastion_host       = aws_instance.frontend.public_ip
+      bastion_user       = "ubuntu"
+      bastion_private_key = file("${var.key_name}.pem")
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "docker --version",
+      "docker ps",
+      "curl -f http://localhost:2358/about || echo 'Judge0 API not reachable'",
+      "curl -f http://localhost:8000/health || echo 'Backend API not reachable'"
+    ]
+    connection {
+      type               = "ssh"
+      user               = "ubuntu"
+      private_key        = file("${var.key_name}.pem")
+      host               = self.private_ip
+      bastion_host       = aws_instance.frontend.public_ip
+      bastion_user       = "ubuntu"
+      bastion_private_key = file("${var.key_name}.pem")
+    }
+  }
+
+  depends_on = [aws_instance.frontend]  # backend depends on frontend (bastion)
 }
