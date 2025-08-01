@@ -125,16 +125,17 @@ Requires=docker.service
 After=docker.service
 
 [Service]
-Type=simple
-WorkingDirectory=/app
-ExecStart=/usr/bin/docker compose -f /app/docker-compose.yml up
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/bin/docker compose -f /app/docker-compose.yml up -d
 ExecStop=/usr/bin/docker compose -f /app/docker-compose.yml down
-Restart=always
+WorkingDirectory=/app
 User=ubuntu
 Group=docker
 
 [Install]
 WantedBy=multi-user.target
+
 
 EOF
 
