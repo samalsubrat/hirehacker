@@ -29,7 +29,7 @@ resource "aws_vpc" "main" {
 # 2. Subnets
 variable "vpc_availability_zones" {
   type    = list(string)
-  default = ["ap-south-1a", "ap-south-1b"]
+  default = ["ap-south-1a"]
 }
 
 resource "aws_subnet" "public_subnet" {
