@@ -9,7 +9,7 @@ echo "========================================="
 
 # Update system packages
 echo "Updating system packages..."
-apt update -y && apt upgrade -y
+apt update -y
 
 # Install Docker
 echo "Installing Docker..."
