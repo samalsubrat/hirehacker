@@ -125,16 +125,17 @@ Requires=docker.service
 After=docker.service
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/app/start-frontend.sh
-ExecStop=/usr/bin/docker compose -f /app/docker-compose.yml down
+Type=simple
 WorkingDirectory=/app
+ExecStart=/usr/bin/docker compose -f /app/docker-compose.yml up
+ExecStop=/usr/bin/docker compose -f /app/docker-compose.yml down
+Restart=always
 User=ubuntu
 Group=docker
 
 [Install]
 WantedBy=multi-user.target
+
 EOF
 
 systemctl daemon-reload
