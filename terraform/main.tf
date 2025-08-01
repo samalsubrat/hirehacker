@@ -288,10 +288,10 @@ resource "aws_instance" "public_ec2" {
 
   provisioner "remote-exec" {
     inline = [
-      "chmod +x /home/ubuntu/frontend.sh",
-      "export BACKEND_PRIVATE_IP=${aws_instance.private_ec2[0].private_ip}",
-      "sudo -E /home/ubuntu/frontend.sh"
-    ]
+  "chmod +x /home/ubuntu/frontend.sh",
+  "export BACKEND_PRIVATE_IP=http://localhost",
+  "sudo -E /home/ubuntu/frontend.sh"
+]
 
     connection {
       type        = "ssh"
@@ -378,7 +378,7 @@ resource "aws_instance" "private_ec2" {
   }
 
   provisioner "remote-exec" {
-    when    = "create"
+    when    = create
     inline  = [
       "sleep 60",
       "sudo /home/ubuntu/backend.sh full"
