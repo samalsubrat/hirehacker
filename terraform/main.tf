@@ -19,131 +19,100 @@ variable "vpc_cidr" {
   default = "10.0.0.0/16"
 }
 
-variable "vpc_availability_zones" {
-  type        = list(string)
-  description = "Availability Zones"
-  default     = ["ap-south-1a", "ap-south-1b"]
+variable "key_name" {
+  description = "AWS key pair name"
+  default     = "your-key-pair-name"
 }
 
-locals {
-  frontend_script = templatefile("${path.module}/modules/instances/scripts/frontend.sh.tpl", {
-    backend_ip = aws_instance.backend_private[0].private_ip
-    frontend_image = "samalsubrat/hirehacker-frontend:latest" # Your Docker Hub image tag
-  })
-
-  backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
+# 1. Lookup latest Ubuntu 22.04 AMI
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
-# 1. VPC
+# 2. VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
-
-  tags = {
-    Name = "${var.project_name}-vpc"
-  }
+  tags = { Name = "${var.project_name}-vpc" }
 }
 
-# 2. Subnets (public and private)
+# 3. Subnets (public and private)
 resource "aws_subnet" "public_subnet" {
-  count             = length(var.vpc_availability_zones)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 1)
-  availability_zone = var.vpc_availability_zones[count.index]
-
-  tags = {
-    Name = "${var.project_name}-public-subnet-${count.index + 1}"
-  }
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "ap-south-1a"
+  map_public_ip_on_launch = true
+  tags = { Name = "${var.project_name}-public-subnet" }
 }
 
 resource "aws_subnet" "private_subnet" {
-  count             = length(var.vpc_availability_zones)
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 3)
-  availability_zone = var.vpc_availability_zones[count.index]
-
-  tags = {
-    Name = "${var.project_name}-private-subnet-${count.index + 1}"
-  }
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-south-1a"
+  tags = { Name = "${var.project_name}-private-subnet" }
 }
 
-# 3. Internet Gateway
-resource "aws_internet_gateway" "igw_vpc" {
+# 4. Internet Gateway & Public Route Table
+resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${var.project_name}-igw"
-  }
+  tags   = { Name = "${var.project_name}-igw" }
 }
 
-# 4. Route Table for Public Subnet
-resource "aws_route_table" "route_table_public" {
+resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
-
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw_vpc.id
+    gateway_id = aws_internet_gateway.igw.id
   }
-
-  tags = {
-    Name = "${var.project_name}-public-rt"
-  }
+  tags = { Name = "${var.project_name}-public-rt" }
 }
 
-# 5. Route Table Association with Public Subnet
-resource "aws_route_table_association" "public_subnet_association" {
-  count          = length(var.vpc_availability_zones)
-  subnet_id      = aws_subnet.public_subnet[count.index].id
-  route_table_id = aws_route_table.route_table_public.id
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public.id
 }
 
-# 6. Elastic IP for NAT
-resource "aws_eip" "eip" {
+# 5. NAT Gateway & Private Route Table
+resource "aws_eip" "nat" {
   domain = "vpc"
-  depends_on = [aws_internet_gateway.igw_vpc]
 }
 
-# 7. NAT Gateway in Public Subnet 0
-resource "aws_nat_gateway" "hh_nat_gateway" {
-  allocation_id = aws_eip.eip.id
-  subnet_id     = aws_subnet.public_subnet[0].id
-
-  depends_on = [aws_internet_gateway.igw_vpc]
-
-  tags = {
-    Name = "${var.project_name}-nat-gateway"
-  }
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_subnet.id
+  depends_on    = [aws_internet_gateway.igw]
+  tags = { Name = "${var.project_name}-nat" }
 }
 
-# 8. Route Table for Private Subnets
-resource "aws_route_table" "route_table_private" {
+resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-
   route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.hh_nat_gateway.id
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
   }
-
-  depends_on = [aws_nat_gateway.hh_nat_gateway]
-
-  tags = {
-    Name = "${var.project_name}-private-rt"
-  }
+  tags = { Name = "${var.project_name}-private-rt" }
 }
 
-# 9. Route Table Association with Private Subnets
-resource "aws_route_table_association" "private_subnet_association" {
-  count          = length(var.vpc_availability_zones)
-  subnet_id      = aws_subnet.private_subnet[count.index].id
-  route_table_id = aws_route_table.route_table_private.id
+resource "aws_route_table_association" "private" {
+  subnet_id      = aws_subnet.private_subnet.id
+  route_table_id = aws_route_table.private.id
 }
 
-# 10. Security Group for Frontend (Public)
+# 6. Security Groups
 resource "aws_security_group" "frontend" {
   name        = "${var.project_name}-frontend-sg"
-  description = "Frontend security group"
   vpc_id      = aws_vpc.main.id
+  description = "Allow HTTP and SSH"
 
   ingress {
     from_port   = 80
@@ -166,16 +135,13 @@ resource "aws_security_group" "frontend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.project_name}-frontend-sg"
-  }
+  tags = { Name = "${var.project_name}-frontend-sg" }
 }
 
-# 11. Security Group for Backend (Private)
 resource "aws_security_group" "backend" {
   name        = "${var.project_name}-backend-sg"
-  description = "Backend security group"
   vpc_id      = aws_vpc.main.id
+  description = "Allow traffic from VPC and frontend"
 
   ingress {
     from_port       = 22
@@ -212,28 +178,74 @@ resource "aws_security_group" "backend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.project_name}-backend-sg"
+  tags = { Name = "${var.project_name}-backend-sg" }
+}
+
+# 7. Backend Instance (private)
+resource "aws_instance" "backend_private" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_subnet.id
+  vpc_security_group_ids = [aws_security_group.backend.id]
+  key_name               = var.key_name
+  associate_public_ip_address = false
+
+  tags = { Name = "${var.project_name}-backend-instance" }
+
+  provisioner "file" {
+    content     = local.backend_script
+    destination = "/home/ubuntu/backend.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /home/ubuntu/backend.sh",
+      "sudo /home/ubuntu/backend.sh"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.private_ip
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "docker ps",
+      "curl -f http://localhost:2358/about || echo 'Judge0 API not reachable'",
+      "curl -f http://localhost:8000/health || echo 'Backend API not reachable'"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.private_ip
+    }
   }
 }
 
-# 12. Key Pair (replace with your actual key pair name)
-variable "key_name" {
-  default = "your-key-pair-name"
+# 8. Local value updated after backend instance is created
+locals {
+  frontend_script = templatefile("${path.module}/modules/instances/scripts/frontend.sh.tpl", {
+    backend_ip     = aws_instance.backend_private.private_ip
+    frontend_image = "samalsubrat/hirehacker-frontend:latest"
+  })
+  backend_script = file("${path.module}/modules/instances/scripts/backend.sh")
 }
 
-# 13. Frontend EC2 Instance (Public)
+# 9. Frontend Instance (public)
 resource "aws_instance" "frontend" {
-  ami                         = "ami-0d8f6eb4f641ef691" # Ubuntu 22.04 LTS ap-south-1 (update as needed)
-  instance_type               = "t3.micro"
-  subnet_id                   = aws_subnet.public_subnet[0].id
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.public_subnet.id
   vpc_security_group_ids      = [aws_security_group.frontend.id]
-  key_name                   = var.key_name
+  key_name                    = var.key_name
   associate_public_ip_address = true
 
-  tags = {
-    Name = "${var.project_name}-frontend-instance"
-  }
+  tags = { Name = "${var.project_name}-frontend-instance" }
 
   provisioner "file" {
     content     = local.frontend_script
@@ -249,7 +261,55 @@ resource "aws_instance" "frontend" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/${var.key_name}.pem") # Update path if needed
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.public_ip
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "docker ps",
+      "curl -f http://localhost || echo 'Frontend not responding'"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
+      host        = self.public_ip
+    }
+  }
+
+  depends_on = [aws_instance.backend_private]
+}
+
+
+# 10. Frontend EC2 Instance (public)
+resource "aws_instance" "frontend" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.public_subnet.id
+  vpc_security_group_ids      = [aws_security_group.frontend.id]
+  key_name                    = var.key_name
+  associate_public_ip_address = true
+
+  tags = { Name = "${var.project_name}-frontend-instance" }
+
+  provisioner "file" {
+    content     = local.frontend_script
+    destination = "/home/ubuntu/frontend.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /home/ubuntu/frontend.sh",
+      "sudo /home/ubuntu/frontend.sh"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/${var.key_name}.pem")
       host        = self.public_ip
     }
   }
@@ -258,7 +318,7 @@ resource "aws_instance" "frontend" {
     inline = [
       "docker --version",
       "docker ps",
-      "curl -f http://localhost || echo 'Frontend app not responding on localhost'"
+      "curl -f http://localhost || echo 'Frontend app not responding'"
     ]
 
     connection {
@@ -270,19 +330,17 @@ resource "aws_instance" "frontend" {
   }
 }
 
-# 14. Backend EC2 Instances (Private Subnet)
+# 11. Backend EC2 Instance (private)
 resource "aws_instance" "backend_private" {
-  count                      = 2
-  ami                        = "ami-0d8f6eb4f641ef691" # Ubuntu 22.04 LTS ap-south-1 (update as needed)
-  instance_type              = "t3.micro"
-  subnet_id                  = element(aws_subnet.private_subnet[*].id, count.index)
-  vpc_security_group_ids     = [aws_security_group.backend.id]
-  key_name                   = var.key_name
+  count                   = 1
+  ami                     = data.aws_ami.ubuntu.id
+  instance_type           = "t2.micro"
+  subnet_id               = aws_subnet.private_subnet.id
+  vpc_security_group_ids  = [aws_security_group.backend.id]
+  key_name                = var.key_name
   associate_public_ip_address = false
 
-  tags = {
-    Name = "${var.project_name}-backend-instance-${count.index + 1}"
-  }
+  tags = { Name = "${var.project_name}-backend-instance" }
 
   provisioner "file" {
     content     = local.backend_script
