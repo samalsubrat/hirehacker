@@ -64,15 +64,15 @@ cat > /app/docker-compose.yml <<EOF
 version: '3.8'
 services:
   frontend:
-    image: samalsubrat/hirehacker-frontend:v1.0.1
+    image: samalsubrat/hirehacker-frontend:v1.0.2
     container_name: hirehacker-frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://${BACKEND_PRIVATE_IP}:2358
-      - NEXT_PUBLIC_BACKEND_URL=http://${BACKEND_PRIVATE_IP}:8000
-      - JUDGE0_API_URL=http://${BACKEND_PRIVATE_IP}:2358
+      - NEXT_PUBLIC_API_URL=${BACKEND_PRIVATE_IP}:2358
+      - NEXT_PUBLIC_BACKEND_URL=${BACKEND_PRIVATE_IP}:8000
+      - JUDGE0_API_URL=${BACKEND_PRIVATE_IP}:2358
       - DB_USER=postgres
       - DB_HOST=${BACKEND_PRIVATE_IP}
       - DB_NAME=postgres

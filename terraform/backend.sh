@@ -65,6 +65,24 @@ EOF
 chmod +x /app/start-backend.sh
 chown ubuntu:ubuntu /app/start-backend.sh
 
+echo "Waiting for PostgreSQL to be ready..."
+until docker exec -i postgres psql -U postgres -d submissions -c '\q' 2>/dev/null; do
+  sleep 1
+done
+
+echo "Creating 'submissions' table if it doesn't exist..."
+docker exec -i postgres psql -U postgres -d submissions <<EOF
+CREATE TABLE IF NOT EXISTS submissions (
+  id SERIAL PRIMARY KEY,
+  user_id UUID,
+  code TEXT NOT NULL,
+  language VARCHAR(50),
+  result TEXT,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+EOF
+
+
 echo "Creating systemd service..."
 cat > /etc/systemd/system/hirehacker-backend.service << 'EOF'
 [Unit]
@@ -119,7 +137,6 @@ REDIS_CONTAINER=$(docker ps --filter "ancestor=redis" --format "{{.Names}}" | he
 [ -n "$REDIS_CONTAINER" ] && docker exec "$REDIS_CONTAINER" redis-cli ping || echo "Redis not ready"
 
 curl -s http://localhost:2358/about || echo "Judge0 API not reachable"
-curl -s http://localhost:8000/health || echo "Backend API not reachable"
 EOF
 
 chmod +x /app/health-check.sh

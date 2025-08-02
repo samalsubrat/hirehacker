@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server"
 
 // Retrieve Judge0 API configuration from environment variables
-const JUDGE0_API_URL = process.env.JUDGE0_SELF_HOSTED_URL || "http://192.168.29.77:2358" // Default to user's Judge0 instance if not set
+const JUDGE0_API_URL = process.env.JUDGE0_SELF_HOSTED_URL ?? "http://localhost:2358" // Default to user's Judge0 instance if not set
 
 // Helper function to introduce a delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
