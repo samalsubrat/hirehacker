@@ -53,7 +53,7 @@ cat > /app/start-backend.sh << 'EOF'
 cd /app || { echo "Judge0 directory not found"; exit 1; }
 
 echo "Starting backend services..."
-docker compose up -d db redis
+docker compose up -d db standalone-postgres redis
 sleep 10s
 docker compose up -d
 sleep 5s
@@ -64,11 +64,6 @@ EOF
 
 chmod +x /app/start-backend.sh
 chown ubuntu:ubuntu /app/start-backend.sh
-
-echo "Waiting for PostgreSQL to be ready..."
-until docker exec -i postgres psql -U postgres -d submissions -c '\q' 2>/dev/null; do
-  sleep 1
-done
 
 echo "Creating 'submissions' table if it doesn't exist..."
 docker exec -i postgres psql -U postgres -d submissions <<EOF
