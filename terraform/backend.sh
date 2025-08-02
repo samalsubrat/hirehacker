@@ -65,19 +65,6 @@ EOF
 chmod +x /app/start-backend.sh
 chown ubuntu:ubuntu /app/start-backend.sh
 
-echo "Creating 'submissions' table if it doesn't exist..."
-docker exec -i postgres psql -U postgres -d submissions <<EOF
-CREATE TABLE IF NOT EXISTS submissions (
-  id SERIAL PRIMARY KEY,
-  user_id UUID,
-  code TEXT NOT NULL,
-  language VARCHAR(50),
-  result TEXT,
-  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-EOF
-
-
 echo "Creating systemd service..."
 cat > /etc/systemd/system/hirehacker-backend.service << 'EOF'
 [Unit]
