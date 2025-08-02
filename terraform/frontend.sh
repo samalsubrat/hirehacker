@@ -72,6 +72,12 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://${BACKEND_PRIVATE_IP}:2358
       - NEXT_PUBLIC_BACKEND_URL=http://${BACKEND_PRIVATE_IP}:8000
+      - JUDGE0_API_URL=http://${BACKEND_PRIVATE_IP}:2358
+      - DB_USER=postgres
+      - DB_HOST=${BACKEND_PRIVATE_IP}
+      - DB_NAME=postgres
+      - DB_PASSWORD=subrat
+      - DB_PORT=5432
     restart: unless-stopped
     volumes:
       - /app/logs:/app/logs

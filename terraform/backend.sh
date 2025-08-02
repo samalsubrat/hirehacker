@@ -44,13 +44,13 @@ cd /app
 
 echo "Cloning Judge0 repo..."
 git clone --depth=1 --branch backend https://github.com/samalsubrat/hirehacker.git
-mv hirehacker/backend/judge0-v1.13.1 ./
+mv hirehacker/backend/* ./
 rm -rf hirehacker
 
 echo "Creating startup script..."
 cat > /app/start-backend.sh << 'EOF'
 #!/bin/bash
-cd /app/judge0-v1.13.1 || { echo "Judge0 directory not found"; exit 1; }
+cd /app || { echo "Judge0 directory not found"; exit 1; }
 
 echo "Starting backend services..."
 docker compose up -d db redis

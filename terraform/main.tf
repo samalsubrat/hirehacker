@@ -337,6 +337,11 @@ resource "aws_instance" "private_ec2" {
   vpc_security_group_ids      = [aws_security_group.backend.id]
   key_name                    = aws_key_pair.generated_key.key_name
 
+  root_block_device {
+    volume_size = 30
+    volume_type = "gp2"
+  }
+
   # Use bastion host (frontend instance) for SSH access
  
    provisioner "file" {
