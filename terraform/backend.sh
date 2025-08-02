@@ -76,7 +76,7 @@ After=docker.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/app/start-backend.sh
-ExecStop=/usr/bin/docker compose -f /app/docker-compose.yml down
+ExecStop=/bin/bash -c 'cd /app && docker compose down'
 WorkingDirectory=/app
 User=ubuntu
 Group=docker
@@ -87,6 +87,24 @@ EOF
 
 systemctl daemon-reload
 systemctl enable hirehacker-backend.service
+
+echo "Creating post-reboot service..."
+cat <<'EOF' | sudo tee /etc/systemd/system/hirehacker-backend-post.service
+[Unit]
+Description=Hirehacker Backend Post-Reboot Provisioning
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/ubuntu/backend.sh full
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable hirehacker-backend-post.service
 
 echo "Creating health check script..."
 cat > /app/health-check.sh << 'EOF'
@@ -108,7 +126,7 @@ chmod +x /app/health-check.sh
 chown ubuntu:ubuntu /app/health-check.sh
 
 echo "Starting backend services..."
-/app/start-backend.sh
+systemctl start hirehacker-backend.service
 
 echo "Waiting for services to stabilize..."
 sleep 60

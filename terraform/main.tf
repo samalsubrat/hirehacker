@@ -378,25 +378,6 @@ provisioner "remote-exec" {
 }
 
 # Step 2: Reboot the system (as a separate step)
-provisioner "remote-exec" {
-  when    = create
-  inline  = [
-    "sleep 2",
-    "sudo reboot"
-  ]
-
-  connection {
-    type                = "ssh"
-    user                = "ubuntu"
-    private_key         = tls_private_key.ssh_key.private_key_pem
-    host                = self.private_ip
-    bastion_host        = aws_instance.public_ec2[0].public_ip
-    bastion_user        = "ubuntu"
-    bastion_private_key = tls_private_key.ssh_key.private_key_pem
-    timeout             = "5m"
-  }
-}
-
 
   provisioner "remote-exec" {
     when    = create
@@ -446,6 +427,28 @@ provisioner "remote-exec" {
     Name = "hirehacker-private-ec2-${count.index + 1}"
   }
 }
+
+resource "null_resource" "backend_reboot" {
+  depends_on = [aws_instance.private_ec2]
+
+  provisioner "remote-exec" {
+    inline = [
+      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Reboot required'; sudo reboot; else echo 'No reboot needed'; fi"
+    ]
+
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = aws_instance.private_ec2[0].private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+      timeout             = "5m"
+    }
+  }
+}
+
 
 # Output important information
 output "frontend_public_ip" {
