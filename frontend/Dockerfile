@@ -3,6 +3,10 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+# Define build-time variable
+ARG JUDGE0_API_URL
+ENV JUDGE0_API_URL=$JUDGE0_API_URL
+
 # Install dependencies
 COPY package.json package-lock.json* yarn.lock* ./
 RUN \
@@ -13,7 +17,7 @@ RUN \
 # Copy the rest of the app
 COPY . .
 
-# Build the Next.js app
+# Build the Next.js app (env variable must be available here)
 RUN npm run build
 
 # Production image
