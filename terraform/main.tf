@@ -327,7 +327,16 @@ resource "aws_instance" "public_ec2" {
   }
 }
 
-# 14. EC2 Backend (Private) - Using bastion host approach
+# Add this to your main.tf file - Enhanced backend instance with better database setup
+
+# Environment variables for database configuration
+locals {
+  db_name     = "hirehacker"
+  db_user     = "hirehacker_user" 
+  db_password = "hirehacker_password"
+}
+
+# 14. EC2 Backend (Private) - Enhanced version with better database setup
 resource "aws_instance" "private_ec2" {
   count                       = length(aws_subnet.private_subnet)
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -343,8 +352,7 @@ resource "aws_instance" "private_ec2" {
   }
 
   # Use bastion host (frontend instance) for SSH access
- 
-   provisioner "file" {
+  provisioner "file" {
     source      = "${path.module}/backend.sh"
     destination = "/home/ubuntu/backend.sh"
 
@@ -360,34 +368,56 @@ resource "aws_instance" "private_ec2" {
     }
   }
 
-  # Step 1: Setup backend and GRUB (without reboot)
-provisioner "remote-exec" {
-  inline = [
-    "cloud-init status --wait",
-    "chmod +x /home/ubuntu/backend.sh",
-    "sudo /home/ubuntu/backend.sh pre",
-    "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
-    "sudo update-grub"
-  ]
+  # Create database environment file
+  provisioner "file" {
+    content = templatefile("${path.module}/db-config.env.tpl", {
+      db_name     = local.db_name
+      db_user     = local.db_user
+      db_password = local.db_password
+    })
+    destination = "/home/ubuntu/db-config.env"
 
-  connection {
-    type                = "ssh"
-    user                = "ubuntu"
-    private_key         = tls_private_key.ssh_key.private_key_pem
-    host                = self.private_ip
-    bastion_host        = aws_instance.public_ec2[0].public_ip
-    bastion_user        = "ubuntu"
-    bastion_private_key = tls_private_key.ssh_key.private_key_pem
-    timeout             = "5m"
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+      timeout             = "5m"
+    }
   }
-}
 
-# Step 2: Reboot the system (as a separate step)
-
+  # Step 1: Setup backend and GRUB (without reboot)
   provisioner "remote-exec" {
-    when    = create
-    inline  = [
+    inline = [
+      "cloud-init status --wait",
+      "chmod +x /home/ubuntu/backend.sh",
+      "sudo /home/ubuntu/backend.sh pre",
+      "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
+      "sudo update-grub"
+    ]
+
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = tls_private_key.ssh_key.private_key_pem
+      host                = self.private_ip
+      bastion_host        = aws_instance.public_ec2[0].public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = tls_private_key.ssh_key.private_key_pem
+      timeout             = "5m"
+    }
+  }
+
+  # Step 2: Full setup after reboot
+  provisioner "remote-exec" {
+    when = create
+    inline = [
       "sleep 60",
+      # Source the database configuration
+      "source /home/ubuntu/db-config.env",
       "sudo /home/ubuntu/backend.sh full"
     ]
 
@@ -402,17 +432,17 @@ provisioner "remote-exec" {
     }
   }
 
-  # Verify Docker installation and application status
+  # Verify setup
   provisioner "remote-exec" {
     inline = [
-      "echo 'Verifying Docker installation and application status...'",
+      "echo 'Verifying complete setup...'",
       "docker --version",
       "docker ps",
-      "echo 'Checking if backend application is running...'",
-      "if docker ps | grep -q backend; then echo 'Backend container is running'; else echo 'Backend container is not running'; fi",
-      "echo 'Checking backend application health...'",
-      "sleep 15", # Wait for application to start
-      "curl -f http://localhost:8080/health && echo 'Backend application is responding' || echo 'Backend application is not responding'"
+      "echo 'Running health check...'",
+      "sleep 30",
+      "/app/health-check.sh",
+      "echo 'Testing database connection...'",
+      "/app/test-db-connection.sh"
     ]
 
     connection {
@@ -433,37 +463,23 @@ provisioner "remote-exec" {
   }
 }
 
-resource "null_resource" "backend_reboot" {
-  depends_on = [aws_instance.private_ec2]
-
-  provisioner "remote-exec" {
-    inline = [
-      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Reboot required'; sudo reboot; else echo 'No reboot needed'; fi"
-    ]
-
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = tls_private_key.ssh_key.private_key_pem
-      host                = aws_instance.private_ec2[0].private_ip
-      bastion_host        = aws_instance.public_ec2[0].public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = tls_private_key.ssh_key.private_key_pem
-      timeout             = "5m"
-    }
+# Output database connection information
+output "database_info" {
+  value = {
+    database_name = local.db_name
+    database_user = local.db_user
+    database_host = aws_instance.private_ec2[0].private_ip
+    database_port = "5432"
+    connection_string = "postgresql://${local.db_user}:${local.db_password}@${aws_instance.private_ec2[0].private_ip}:5432/${local.db_name}"
   }
+  sensitive = true
 }
 
-
-# Output important information
-output "frontend_public_ip" {
-  value = aws_instance.public_ec2[*].public_ip
-}
-
-output "backend_private_ip" {
-  value = aws_instance.private_ec2[*].private_ip
-}
-
-output "ssh_connection_command" {
-  value = "ssh -i hirehacker-key.pem ubuntu@${aws_instance.public_ec2[0].public_ip}"
+# Output useful commands
+output "useful_commands" {
+  value = {
+    ssh_to_backend = "ssh -i hirehacker-key.pem -o ProxyJump=ubuntu@${aws_instance.public_ec2[0].public_ip} ubuntu@${aws_instance.private_ec2[0].private_ip}"
+    health_check = "ssh -i hirehacker-key.pem -o ProxyJump=ubuntu@${aws_instance.public_ec2[0].public_ip} ubuntu@${aws_instance.private_ec2[0].private_ip} '/app/health-check.sh'"
+    test_database = "ssh -i hirehacker-key.pem -o ProxyJump=ubuntu@${aws_instance.public_ec2[0].public_ip} ubuntu@${aws_instance.private_ec2[0].private_ip} '/app/test-db-connection.sh'"
+  }
 }

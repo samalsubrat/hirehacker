@@ -3,13 +3,15 @@
 import { NextResponse } from "next/server"
 
 // Retrieve Judge0 API configuration from environment variables
-const JUDGE0_API_URL = process.env.JUDGE0_SELF_HOSTED_URL ?? "http://localhost:2358" // Default to user's Judge0 instance if not set
+const JUDGE0_API_URL = process.env.JUDGE0_SELF_HOSTED_URL
 
 // Helper function to introduce a delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function POST(req: Request) {
   try {
+    console.log("JUDGE0_API_URL in route:", process.env.JUDGE0_API_URL);
+
     const { code, language_id, stdin, compiler_options } = await req.json()
 
     // Prepare the submission body
@@ -89,6 +91,7 @@ export async function POST(req: Request) {
     }
 
     // Return the final result from Judge0
+    console.log("JUDGE0_API_URL in route:", process.env.JUDGE0_API_URL);
     return NextResponse.json(result)
   } catch (error) {
     console.error("API Route Error:", error)
