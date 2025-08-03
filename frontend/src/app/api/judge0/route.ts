@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server"
 
 // Retrieve Judge0 API configuration from environment variables
-const JUDGE0_API_URL = process.env.JUDGE0_SELF_HOSTED_URL
+const JUDGE0_API_URL = process.env.JUDGE0_API_URL
 
 // Helper function to introduce a delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
