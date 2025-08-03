@@ -1,100 +1,100 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
 
 // Retrieve Judge0 API configuration from environment variables
-const JUDGE0_API_URL = process.env.JUDGE0_API_URL
+const JUDGE0_API_URL = process.env.JUDGE0_API_URL;
+
+// Fail early if the env variable is not set
+if (!JUDGE0_API_URL) {
+  throw new Error("JUDGE0_API_URL is not defined in environment variables");
+}
 
 // Helper function to introduce a delay
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function POST(req: Request) {
   try {
-    console.log("JUDGE0_API_URL in route:", process.env.JUDGE0_API_URL);
+    console.log("JUDGE0_API_URL in route:", JUDGE0_API_URL);
 
-    const { code, language_id, stdin, compiler_options } = await req.json()
+    const { code, language_id, stdin, compiler_options } = await req.json();
 
     // Prepare the submission body
     const submissionBody: any = {
       source_code: code,
-      language_id: language_id,
-      stdin: stdin,
-      cpu_time_limit: 2, // Set CPU time limit to 2 seconds
-      memory_limit: 128000, // Set memory limit to 128 MB (128000 KB)
-      redirect_stderr_to_stdout: true, // Redirect stderr to stdout for easier error capture
-      base64_encoded: false, // Ensure output is not base64 encoded
-    }
+      language_id,
+      stdin,
+      cpu_time_limit: 2, // 2 seconds CPU limit
+      memory_limit: 128000, // 128 MB
+      redirect_stderr_to_stdout: true,
+      base64_encoded: false,
+    };
 
-    // Add compiler options if provided (e.g., -lm for C math library)
     if (compiler_options) {
-      submissionBody.compiler_options = compiler_options
+      submissionBody.compiler_options = compiler_options;
     }
 
-    // 1. Submit the code to Judge0
+    // 1. Submit code to Judge0
     const submissionResponse = await fetch(`${JUDGE0_API_URL}/submissions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(submissionBody),
-    })
+    });
 
     if (!submissionResponse.ok) {
-      const errorData = await submissionResponse.json()
-      console.error("Judge0 Submission Error:", errorData)
+      const errorData = await submissionResponse.json();
+      console.error("Judge0 Submission Error:", errorData);
       return NextResponse.json(
         { error: "Failed to submit code to Judge0", details: errorData },
-        { status: submissionResponse.status },
-      )
+        { status: submissionResponse.status }
+      );
     }
 
-    const { token } = await submissionResponse.json()
+    const { token } = await submissionResponse.json();
 
-    // 2. Poll for the result using the submission token
-    let result
-    let statusId
-    const maxAttempts = 10 // Maximum number of polling attempts
-    let attempts = 0
+    // 2. Poll for the result using the token
+    let result;
+    let statusId;
+    const maxAttempts = 10;
+    let attempts = 0;
 
     while (attempts < maxAttempts) {
-      await delay(500) // Wait for 500ms before polling again
+      await delay(500);
       const resultResponse = await fetch(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false&fields=*`, {
         method: "GET",
-        headers: {},
-      })
+      });
 
       if (!resultResponse.ok) {
-        const errorData = await resultResponse.json()
-        console.error("Judge0 Result Fetch Error:", errorData)
+        const errorData = await resultResponse.json();
+        console.error("Judge0 Result Fetch Error:", errorData);
         return NextResponse.json(
           { error: "Failed to fetch Judge0 result", details: errorData },
-          { status: resultResponse.status },
-        )
+          { status: resultResponse.status }
+        );
       }
 
-      result = await resultResponse.json()
-      statusId = result.status?.id
+      result = await resultResponse.json();
+      statusId = result.status?.id;
 
-      // Judge0 Status IDs:
-      // 1: In Queue, 2: Processing
-      // 3: Accepted, 4: Wrong Answer, 5: Time Limit Exceeded, 6: Compilation Error, etc.
-      // Break loop if status indicates completion (Accepted or any error)
       if (statusId && statusId >= 3) {
-        break
+        break;
       }
-      attempts++
+
+      attempts++;
     }
 
-    // If polling attempts exceeded, return a timeout error
     if (attempts === maxAttempts) {
-      return NextResponse.json({ error: "Judge0 polling timed out." }, { status: 504 })
+      return NextResponse.json({ error: "Judge0 polling timed out." }, { status: 504 });
     }
 
-    // Return the final result from Judge0
-    console.log("JUDGE0_API_URL in route:", process.env.JUDGE0_API_URL);
-    return NextResponse.json(result)
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("API Route Error:", error)
-    return NextResponse.json({ error: "Internal server error", details: (error as Error).message }, { status: 500 })
+    console.error("API Route Error:", error);
+    return NextResponse.json(
+      { error: "Internal server error", details: (error as Error).message },
+      { status: 500 }
+    );
   }
 }

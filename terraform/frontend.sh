@@ -64,7 +64,7 @@ cat > /app/docker-compose.yml <<EOF
 version: '3.8'
 services:
   frontend:
-    image: samalsubrat/hirehacker-frontend:v1.1
+    image: samalsubrat/hirehacker-frontend:v2
     container_name: hirehacker-frontend
     ports:
       - "3000:3000"
