@@ -3,51 +3,38 @@
 
 set -euo pipefail
 
+MODE="${1:-full}"
+
+if [[ "$MODE" == "pre" ]]; then
+  echo "[PRE] Installing Docker and preparing for reboot..."
+  sudo apt update -y
+  sudo apt install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
+
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
+
+  echo     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable"     > /etc/apt/sources.list.d/docker.list
+
+  sudo apt update -y
+  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-compose
+
+  sudo usermod -aG docker ubuntu
+
+  echo "Configuring GRUB for cgroup v1"
+  sudo sed -i 's/^GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub
+  sudo update-grub
+
+  echo "Rebooting required. Terraform will handle it."
+  exit 0
+fi
+
+
+
 echo "========================================="
 echo "Starting Hirehacker Frontend Setup Script"
 echo "========================================="
 
-# Update system packages
-echo "Updating system packages..."
-apt update -y
-
-# Install Docker prerequisites and Nginx
-echo "Installing Docker prerequisites and Nginx..."
-apt install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    software-properties-common \
-    gnupg \
-    lsb-release \
-    nginx
-
-# Add Docker GPG key and repo
-# Add Docker GPG key and repo (modern method)
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  > /etc/apt/sources.list.d/docker.list
-
-
-# Install Docker Engine
-echo "Installing Docker engine..."
-apt update -y
-apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Start and enable Docker service
-echo "Starting Docker service..."
-systemctl enable docker
-systemctl start docker
-
-# Add ubuntu user to docker group
-echo "Adding ubuntu user to docker group..."
-usermod -aG docker ubuntu
 
 # Create application directory
 echo "Creating application directory..."
@@ -76,7 +63,7 @@ services:
       - DB_USER=postgres
       - DB_HOST=${BACKEND_PRIVATE_IP}
       - DB_NAME=postgres
-      - DB_PASSWORD=postgres
+      - DB_PASSWORD=subrat
       - DB_PORT=5432
     restart: unless-stopped
     volumes:
@@ -234,3 +221,70 @@ echo ""
 echo "Application health check:"
 curl -f http://localhost/health && echo " - Nginx is responding"
 curl -f http://localhost:3000 && echo " - Frontend app is responding" || echo " - Frontend app may still be starting"
+# ===============================
+# Setup Judge0 inside Frontend EC2
+# ===============================
+
+echo "Setting up Judge0..."
+mkdir -p /app/judge0
+cd /app/judge0
+
+echo "Cloning Judge0 repo..."
+git clone --depth=1 --branch backend https://github.com/samalsubrat/hirehacker.git temp_judge0
+mv temp_judge0/backend/* ./
+rm -rf temp_judge0
+
+echo "Creating Judge0 startup script..."
+cat > /app/judge0/start-judge0.sh << 'EOF'
+#!/bin/bash
+cd /app/judge0 || { echo "Judge0 directory not found"; exit 1; }
+docker compose up -d db redis
+sleep 10s
+docker compose up -d
+EOF
+
+chmod +x /app/judge0/start-judge0.sh
+chown ubuntu:ubuntu /app/judge0/start-judge0.sh
+
+echo "Creating systemd service for Judge0..."
+cat > /etc/systemd/system/hirehacker-judge0.service << 'EOF'
+[Unit]
+Description=Hirehacker Judge0 Service
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/app/judge0/start-judge0.sh
+ExecStop=/bin/bash -c 'cd /app/judge0 && docker compose down'
+WorkingDirectory=/app/judge0
+User=ubuntu
+Group=docker
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable hirehacker-judge0.service
+systemctl start hirehacker-judge0.service
+
+echo "Creating post-reboot provisioning service..."
+cat <<'EOF' | sudo tee /etc/systemd/system/hirehacker-frontend-post.service
+[Unit]
+Description=Hirehacker Frontend Post-Reboot Setup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/ubuntu/frontend.sh full
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable hirehacker-frontend-post.service
