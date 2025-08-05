@@ -272,22 +272,44 @@ resource "aws_instance" "public_ec2" {
   }
 
   provisioner "remote-exec" {
+  when    = create
+  inline = [
+    "chmod +x /home/ubuntu/frontend.sh",
+    "sudo /home/ubuntu/frontend.sh pre",
+    "sudo touch /tmp/hirehacker_reboot_required",
+    "sudo reboot"
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "ubuntu"
+    private_key = tls_private_key.ssh_key.private_key_pem
+    host        = self.public_ip
+    timeout     = "5m"
+  }
+}
+
+  tags = {
+    Name = "hirehacker-public-ec2-${count.index + 1}"
+  }
+}
+
+resource "null_resource" "frontend_reboot_complete" {
+  depends_on = [aws_instance.public_ec2]
+
+  provisioner "remote-exec" {
     inline = [
-      "chmod +x /home/ubuntu/frontend.sh",
-      "sudo /home/ubuntu/frontend.sh pre",
-      "sudo reboot"
+      "cloud-init status --wait",
+      "if [ -f /tmp/hirehacker_reboot_required ]; then echo 'Continuing after reboot...'; sudo /home/ubuntu/frontend.sh full; fi"
     ]
 
     connection {
       type        = "ssh"
       user        = "ubuntu"
       private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
+      host        = aws_instance.public_ec2[0].public_ip
+      timeout     = "5m"
     }
-  }
-
-  tags = {
-    Name = "hirehacker-public-ec2-${count.index + 1}"
   }
 }
 
