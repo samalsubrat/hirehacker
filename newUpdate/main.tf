@@ -264,6 +264,28 @@ resource "aws_instance" "public_ec2" {
     volume_type = "gp2"
   }
 
+  user_data = base64encode(templatefile("${path.module}/frontend.sh", {
+    BACKEND_PRIVATE_IP = aws_instance.private_ec2[0].private_ip
+    MODE = "pre"
+  }))
+
+  tags = {
+    Name = "hirehacker-public-ec2-${count.index + 1}"
+  }
+
+  depends_on = [aws_instance.private_ec2]
+}
+
+# Wait for frontend instance to complete initial setup and reboot
+resource "time_sleep" "wait_for_frontend_reboot" {
+  depends_on = [aws_instance.public_ec2]
+  create_duration = "180s"  # Wait 3 minutes for reboot and initialization
+}
+
+# Final frontend configuration after reboot
+resource "null_resource" "frontend_final_setup" {
+  depends_on = [time_sleep.wait_for_frontend_reboot]
+
   provisioner "file" {
     source      = "${path.module}/frontend.sh"
     destination = "/home/ubuntu/frontend.sh"
@@ -271,53 +293,17 @@ resource "aws_instance" "public_ec2" {
       type        = "ssh"
       user        = "ubuntu"
       private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
+      host        = aws_instance.public_ec2[0].public_ip
+      timeout     = "5m"
     }
   }
 
   provisioner "remote-exec" {
     inline = [
       "chmod +x /home/ubuntu/frontend.sh",
-      "sudo /home/ubuntu/frontend.sh pre",
-      "sudo touch /var/run/hirehacker-reboot-required"
-    ]
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
-    }
-  }
-
-  tags = {
-    Name = "hirehacker-public-ec2-${count.index + 1}"
-  }
-}
-
-resource "null_resource" "frontend_reboot" {
-  depends_on = [aws_instance.public_ec2]
-
-  provisioner "remote-exec" {
-    inline = [
-      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Rebooting now...'; sudo reboot; else echo 'No reboot required.'; fi"
-    ]
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = aws_instance.public_ec2[0].public_ip
-    }
-  }
-}
-
-resource "null_resource" "frontend_post_reboot" {
-  depends_on = [null_resource.frontend_reboot]
-
-  provisioner "remote-exec" {
-    inline = [
-      "cloud-init status --wait",
-      "echo 'Running frontend.sh full phase after reboot...'",
-      "sudo /home/ubuntu/frontend.sh full"
+      "export BACKEND_PRIVATE_IP=${aws_instance.private_ec2[0].private_ip}",
+      "export MODE=full",
+      "sudo -E /home/ubuntu/frontend.sh"
     ]
     connection {
       type        = "ssh"
@@ -328,25 +314,6 @@ resource "null_resource" "frontend_post_reboot" {
     }
   }
 }
-
-resource "null_resource" "wait_for_frontend" {
-  depends_on = [null_resource.frontend_reboot]
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo 'Instance is back online'"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = aws_instance.public_ec2[0].public_ip
-      timeout     = "5m"
-    }
-  }
-}
-
 
 
 # 14. EC2 Backend (Private) - Using bastion host approach
