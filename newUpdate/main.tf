@@ -327,6 +327,27 @@ resource "null_resource" "frontend_post_reboot" {
     }
   }
 }
+
+resource "null_resource" "wait_for_frontend" {
+  depends_on = [null_resource.frontend_reboot]
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'Instance is back online'"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = aws_instance.public_ec2[0].public_ip
+      timeout     = "5m"
+    }
+  }
+}
+
+
+
 # 14. EC2 Backend (Private) - Using bastion host approach
 resource "aws_instance" "private_ec2" {
   count                       = length(aws_subnet.private_subnet)
