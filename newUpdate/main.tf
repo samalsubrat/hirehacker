@@ -279,7 +279,7 @@ resource "aws_instance" "public_ec2" {
 # Wait for frontend instance to complete initial setup and reboot
 resource "time_sleep" "wait_for_frontend_reboot" {
   depends_on = [aws_instance.public_ec2]
-  create_duration = "180s"  # Wait 3 minutes for reboot and initialization
+  create_duration = "60s"  # Wait 3 minutes for reboot and initialization
 }
 
 # Final frontend configuration after reboot
