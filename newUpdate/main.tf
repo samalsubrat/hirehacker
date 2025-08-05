@@ -324,6 +324,7 @@ resource "null_resource" "frontend_post_reboot" {
       user        = "ubuntu"
       private_key = tls_private_key.ssh_key.private_key_pem
       host        = aws_instance.public_ec2[0].public_ip
+      timeout     = "5m"
     }
   }
 }
