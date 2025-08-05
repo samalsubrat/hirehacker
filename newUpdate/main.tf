@@ -307,6 +307,26 @@ resource "null_resource" "frontend_reboot" {
       private_key = tls_private_key.ssh_key.private_key_pem
       host        = aws_instance.public_ec2[0].public_ip
     }
+
+    on_failure = continue
+  }
+}
+
+resource "null_resource" "wait_for_frontend" {
+  depends_on = [null_resource.frontend_reboot]
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'Instance is back online'"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = aws_instance.public_ec2[0].public_ip
+      timeout     = "5m"
+    }
   }
 }
 
@@ -319,24 +339,6 @@ resource "null_resource" "frontend_post_reboot" {
       "echo 'Running frontend.sh full phase after reboot...'",
       "sudo /home/ubuntu/frontend.sh full"
     ]
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = aws_instance.public_ec2[0].public_ip
-      timeout     = "5m"
-    }
-  }
-}
-
-resource "null_resource" "wait_for_frontend" {
-  depends_on = [null_resource.frontend_reboot]
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo 'Instance is back online'"
-    ]
-
     connection {
       type        = "ssh"
       user        = "ubuntu"
