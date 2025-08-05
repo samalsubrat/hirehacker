@@ -137,7 +137,6 @@ output "private_key_pem" {
 }
 
 # 11. AMI for Ubuntu 22.04
-# 11. AMI for Ubuntu 22.04
 data "aws_ami" "ubuntu_2204" {
   most_recent = true
   owners      = ["099720109477"]
@@ -231,8 +230,8 @@ resource "aws_security_group" "backend" {
   }
 
   ingress {
-    from_port   = 8080
-    to_port     = 8080
+    from_port   = 8000
+    to_port     = 8000
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
@@ -279,7 +278,7 @@ resource "aws_instance" "public_ec2" {
 # Wait for frontend instance to complete initial setup and reboot
 resource "time_sleep" "wait_for_frontend_reboot" {
   depends_on = [aws_instance.public_ec2]
-  create_duration = "60s"  # Wait 3 minutes for reboot and initialization
+  create_duration = "180s"  # Wait 3 minutes for reboot and initialization
 }
 
 # Final frontend configuration after reboot
@@ -294,7 +293,7 @@ resource "null_resource" "frontend_final_setup" {
       user        = "ubuntu"
       private_key = tls_private_key.ssh_key.private_key_pem
       host        = aws_instance.public_ec2[0].public_ip
-      timeout     = "5m"
+      timeout     = "10m"
     }
   }
 
@@ -310,13 +309,12 @@ resource "null_resource" "frontend_final_setup" {
       user        = "ubuntu"
       private_key = tls_private_key.ssh_key.private_key_pem
       host        = aws_instance.public_ec2[0].public_ip
-      timeout     = "5m"
+      timeout     = "10m"
     }
   }
 }
 
-
-# 14. EC2 Backend (Private) - Using bastion host approach
+# 14. EC2 Backend (Private)
 resource "aws_instance" "private_ec2" {
   count                       = length(aws_subnet.private_subnet)
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -331,9 +329,28 @@ resource "aws_instance" "private_ec2" {
     volume_type = "gp2"
   }
 
-  # Use bastion host (frontend instance) for SSH access
- 
-   provisioner "file" {
+  user_data = base64encode(templatefile("${path.module}/backend.sh", {
+    MODE = "pre"
+  }))
+
+  depends_on = [aws_nat_gateway.hh_nat_gateway]
+
+  tags = {
+    Name = "hirehacker-private-ec2-${count.index + 1}"
+  }
+}
+
+# Wait for backend instance to complete initial setup and reboot
+resource "time_sleep" "wait_for_backend_reboot" {
+  depends_on = [aws_instance.private_ec2]
+  create_duration = "180s"  # Wait 3 minutes for reboot and initialization
+}
+
+# Final backend configuration after reboot
+resource "null_resource" "backend_final_setup" {
+  depends_on = [time_sleep.wait_for_backend_reboot, aws_instance.public_ec2]
+
+  provisioner "file" {
     source      = "${path.module}/backend.sh"
     destination = "/home/ubuntu/backend.sh"
 
@@ -341,93 +358,19 @@ resource "aws_instance" "private_ec2" {
       type                = "ssh"
       user                = "ubuntu"
       private_key         = tls_private_key.ssh_key.private_key_pem
-      host                = self.private_ip
+      host                = aws_instance.private_ec2[0].private_ip
       bastion_host        = aws_instance.public_ec2[0].public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = tls_private_key.ssh_key.private_key_pem
-      timeout             = "5m"
+      timeout             = "10m"
     }
   }
-
-  # Step 1: Setup backend and GRUB (without reboot)
-provisioner "remote-exec" {
-  inline = [
-    "cloud-init status --wait",
-    "chmod +x /home/ubuntu/backend.sh",
-    "sudo /home/ubuntu/backend.sh pre",
-    "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
-    "sudo update-grub"
-  ]
-
-  connection {
-    type                = "ssh"
-    user                = "ubuntu"
-    private_key         = tls_private_key.ssh_key.private_key_pem
-    host                = self.private_ip
-    bastion_host        = aws_instance.public_ec2[0].public_ip
-    bastion_user        = "ubuntu"
-    bastion_private_key = tls_private_key.ssh_key.private_key_pem
-    timeout             = "5m"
-  }
-}
-
-# Step 2: Reboot the system (as a separate step)
-
-  provisioner "remote-exec" {
-    when    = create
-    inline  = [
-      "sleep 60",
-      "sudo /home/ubuntu/backend.sh full"
-    ]
-
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = tls_private_key.ssh_key.private_key_pem
-      host                = self.private_ip
-      bastion_host        = aws_instance.public_ec2[0].public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = tls_private_key.ssh_key.private_key_pem
-    }
-  }
-
-  # Verify Docker installation and application status
-  provisioner "remote-exec" {
-    inline = [
-      "echo 'Verifying Docker installation and application status...'",
-      "docker --version",
-      "docker ps",
-      "echo 'Checking if backend application is running...'",
-      "if docker ps | grep -q backend; then echo 'Backend container is running'; else echo 'Backend container is not running'; fi",
-      "echo 'Checking backend application health...'",
-      "sleep 15", # Wait for application to start
-      "curl -f http://localhost:8080/health && echo 'Backend application is responding' || echo 'Backend application is not responding'"
-    ]
-
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = tls_private_key.ssh_key.private_key_pem
-      host                = self.private_ip
-      bastion_host        = aws_instance.public_ec2[0].public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = tls_private_key.ssh_key.private_key_pem
-    }
-  }
-
-  depends_on = [aws_instance.public_ec2, aws_nat_gateway.hh_nat_gateway]
-
-  tags = {
-    Name = "hirehacker-private-ec2-${count.index + 1}"
-  }
-}
-
-resource "null_resource" "backend_reboot" {
-  depends_on = [aws_instance.private_ec2]
 
   provisioner "remote-exec" {
     inline = [
-      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Reboot required'; sudo reboot; else echo 'No reboot needed'; fi"
+      "chmod +x /home/ubuntu/backend.sh",
+      "export MODE=full",
+      "sudo -E /home/ubuntu/backend.sh"
     ]
 
     connection {
@@ -438,11 +381,10 @@ resource "null_resource" "backend_reboot" {
       bastion_host        = aws_instance.public_ec2[0].public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = tls_private_key.ssh_key.private_key_pem
-      timeout             = "5m"
+      timeout             = "10m"
     }
   }
 }
-
 
 # Output important information
 output "frontend_public_ip" {
@@ -455,4 +397,8 @@ output "backend_private_ip" {
 
 output "ssh_connection_command" {
   value = "ssh -i hirehacker-key.pem ubuntu@${aws_instance.public_ec2[0].public_ip}"
+}
+
+output "application_url" {
+  value = "http://${aws_instance.public_ec2[0].public_ip}"
 }
