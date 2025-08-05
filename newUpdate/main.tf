@@ -264,25 +264,9 @@ resource "aws_instance" "public_ec2" {
     volume_type = "gp2"
   }
 
-    # Wait for instance to be ready
-  provisioner "remote-exec" {
-    inline = [
-      "cloud-init status --wait"
-    ]
-    
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
-      timeout     = "5m"
-    }
-  }
-
-    provisioner "file" {
+  provisioner "file" {
     source      = "${path.module}/frontend.sh"
     destination = "/home/ubuntu/frontend.sh"
-
     connection {
       type        = "ssh"
       user        = "ubuntu"
@@ -291,54 +275,12 @@ resource "aws_instance" "public_ec2" {
     }
   }
 
-  # Step 1: Setup backend and GRUB (without reboot)
-provisioner "remote-exec" {
-  inline = [
-    "cloud-init status --wait",
-    "chmod +x /home/ubuntu/frontend.sh",
-    "sudo /home/ubuntu/frontend.sh pre",
-    "sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"systemd.unified_cgroup_hierarchy=0 /' /etc/default/grub",
-    "sudo update-grub"
-  ]
-
-  connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
-    }
-}
-
-# Step 2: Reboot the system (as a separate step)
-
-  provisioner "remote-exec" {
-    when    = create
-    inline  = [
-      "sleep 60",
-      "sudo /home/ubuntu/frontend.sh full"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = tls_private_key.ssh_key.private_key_pem
-      host        = self.public_ip
-    }
-  }
-
-  # Verify Docker installation and application status
   provisioner "remote-exec" {
     inline = [
-      "echo 'Verifying Docker installation and application status...'",
-      "docker --version",
-      "docker ps",
-      "echo 'Checking if frontend application is running...'",
-      "if docker ps | grep -q frontend; then echo 'frontend container is running'; else echo 'frontend container is not running'; fi",
-      "echo 'Checking frontend application health...'",
-      "sleep 15", # Wait for application to start
-      "curl -f http://localhost:3000/health && echo 'frontend application is responding' || echo 'Backend application is not responding'"
+      "chmod +x /home/ubuntu/frontend.sh",
+      "sudo /home/ubuntu/frontend.sh pre",
+      "sudo touch /var/run/hirehacker-reboot-required"
     ]
-
     connection {
       type        = "ssh"
       user        = "ubuntu"
@@ -346,7 +288,6 @@ provisioner "remote-exec" {
       host        = self.public_ip
     }
   }
-
 
   tags = {
     Name = "hirehacker-public-ec2-${count.index + 1}"
@@ -358,9 +299,8 @@ resource "null_resource" "frontend_reboot" {
 
   provisioner "remote-exec" {
     inline = [
-      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Reboot required'; sudo reboot; else echo 'No reboot needed'; fi"
+      "if [ -f /var/run/hirehacker-reboot-required ]; then echo 'Rebooting now...'; sudo reboot; else echo 'No reboot required.'; fi"
     ]
-
     connection {
       type        = "ssh"
       user        = "ubuntu"
@@ -370,6 +310,23 @@ resource "null_resource" "frontend_reboot" {
   }
 }
 
+resource "null_resource" "frontend_post_reboot" {
+  depends_on = [null_resource.frontend_reboot]
+
+  provisioner "remote-exec" {
+    inline = [
+      "cloud-init status --wait",
+      "echo 'Running frontend.sh full phase after reboot...'",
+      "sudo /home/ubuntu/frontend.sh full"
+    ]
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = aws_instance.public_ec2[0].public_ip
+    }
+  }
+}
 # 14. EC2 Backend (Private) - Using bastion host approach
 resource "aws_instance" "private_ec2" {
   count                       = length(aws_subnet.private_subnet)
