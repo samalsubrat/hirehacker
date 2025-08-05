@@ -3,7 +3,12 @@
 
 set -euo pipefail
 
-MODE="${1:-full}"
+echo "========================================="
+echo "Starting Hirehacker Frontend Setup Script"
+echo "========================================="
+
+exec > >(tee -i /var/log/hirehacker-frontend-setup.log)
+exec 2>&1
 
 if [[ "$MODE" == "pre" ]]; then
   echo "[PRE] Installing Docker and preparing for reboot..."
@@ -11,10 +16,14 @@ if [[ "$MODE" == "pre" ]]; then
   sudo apt install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
 
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
 
-  echo     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable"     > /etc/apt/sources.list.d/docker.list
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  > /etc/apt/sources.list.d/docker.list
 
   sudo apt update -y
   sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-compose
@@ -29,17 +38,30 @@ if [[ "$MODE" == "pre" ]]; then
   exit 0
 fi
 
-
-
-echo "========================================="
-echo "Starting Hirehacker Frontend Setup Script"
-echo "========================================="
-
-
 # Create application directory
 echo "Creating application directory..."
 mkdir -p /app
 chown ubuntu:ubuntu /app
+
+echo "Cloning Judge0 repo..."
+git clone --depth=1 --branch backend https://github.com/samalsubrat/hirehacker.git
+mv hirehacker/backend/* ./
+rm -rf hirehacker
+
+echo "Creating startup script..."
+cat > /app/start-backend.sh << 'EOF'
+#!/bin/bash
+cd /app || { echo "Judge0 directory not found"; exit 1; }
+
+echo "Starting backend services..."
+docker compose up -d db redis
+sleep 10s
+docker compose up -d
+sleep 5s
+
+docker compose ps
+echo "All backend services started successfully!"
+EOF
 
 # Get backend IP from environment variable (passed from Terraform)
 BACKEND_PRIVATE_IP=${BACKEND_PRIVATE_IP:-"localhost"}
@@ -63,7 +85,7 @@ services:
       - DB_USER=postgres
       - DB_HOST=${BACKEND_PRIVATE_IP}
       - DB_NAME=postgres
-      - DB_PASSWORD=subrat
+      - DB_PASSWORD=postgres
       - DB_PORT=5432
     restart: unless-stopped
     volumes:
@@ -221,70 +243,3 @@ echo ""
 echo "Application health check:"
 curl -f http://localhost/health && echo " - Nginx is responding"
 curl -f http://localhost:3000 && echo " - Frontend app is responding" || echo " - Frontend app may still be starting"
-# ===============================
-# Setup Judge0 inside Frontend EC2
-# ===============================
-
-echo "Setting up Judge0..."
-mkdir -p /app/judge0
-cd /app/judge0
-
-echo "Cloning Judge0 repo..."
-git clone --depth=1 --branch backend https://github.com/samalsubrat/hirehacker.git temp_judge0
-mv temp_judge0/backend/* ./
-rm -rf temp_judge0
-
-echo "Creating Judge0 startup script..."
-cat > /app/judge0/start-judge0.sh << 'EOF'
-#!/bin/bash
-cd /app/judge0 || { echo "Judge0 directory not found"; exit 1; }
-docker compose up -d db redis
-sleep 10s
-docker compose up -d
-EOF
-
-chmod +x /app/judge0/start-judge0.sh
-chown ubuntu:ubuntu /app/judge0/start-judge0.sh
-
-echo "Creating systemd service for Judge0..."
-cat > /etc/systemd/system/hirehacker-judge0.service << 'EOF'
-[Unit]
-Description=Hirehacker Judge0 Service
-Requires=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/app/judge0/start-judge0.sh
-ExecStop=/bin/bash -c 'cd /app/judge0 && docker compose down'
-WorkingDirectory=/app/judge0
-User=ubuntu
-Group=docker
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable hirehacker-judge0.service
-systemctl start hirehacker-judge0.service
-
-echo "Creating post-reboot provisioning service..."
-cat <<'EOF' | sudo tee /etc/systemd/system/hirehacker-frontend-post.service
-[Unit]
-Description=Hirehacker Frontend Post-Reboot Setup
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash /home/ubuntu/frontend.sh full
-RemainAfterExit=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable hirehacker-frontend-post.service
