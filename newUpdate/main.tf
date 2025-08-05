@@ -337,7 +337,7 @@ resource "null_resource" "frontend_post_reboot" {
     inline = [
       "cloud-init status --wait",
       "echo 'Running frontend.sh full phase after reboot...'",
-      "sudo /home/ubuntu/frontend.sh full"
+      "sudo /home/ubuntu/frontend.sh"
     ]
     connection {
       type        = "ssh"
