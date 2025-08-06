@@ -3,9 +3,6 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Define build-time variable
-ARG JUDGE0_SELF_URL
-ENV JUDGE0_SELF_URL=$JUDGE0_SELF_URL
 
 # Install dependencies
 COPY package.json package-lock.json* yarn.lock* ./
