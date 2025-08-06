@@ -62,6 +62,22 @@ docker compose ps
 echo "All backend services started successfully!"
 EOF
 
+# Create Judge0 database initialization script
+echo "Creating database initialization..."
+cat > /app/init-db.sql << 'EOF'
+CREATE USER postgres WITH PASSWORD 'postgres';
+CREATE DATABASE postgres OWNER postgres;
+GRANT ALL PRIVILEGES ON DATABASE postgres TO postgres;
+CREATE TABLE submissions (
+  id SERIAL PRIMARY KEY,
+  user_id UUID,
+  code TEXT NOT NULL,
+  language VARCHAR(50),
+  result TEXT,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+EOF
+
 chmod +x /app/start-backend.sh
 chown ubuntu:ubuntu /app/start-backend.sh
 
