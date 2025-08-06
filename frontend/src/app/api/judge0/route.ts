@@ -3,11 +3,11 @@
 import { NextResponse } from "next/server";
 
 // Retrieve Judge0 API configuration from environment variables
-const JUDGE0_API_URL = process.env.JUDGE0_API_URL;
+const JUDGE0_API_URL = process.env.JUDGE0_SELF_URL;
 
 // Fail early if the env variable is not set
 if (!JUDGE0_API_URL) {
-  throw new Error("JUDGE0_API_URL is not defined in environment variables");
+  throw new Error("JUDGE0_SELF_URL is not defined in environment variables");
 }
 
 // Helper function to introduce a delay
