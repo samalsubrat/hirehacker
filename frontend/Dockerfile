@@ -4,8 +4,6 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Define build-time variable
-ARG JUDGE0_API_URL
-ENV JUDGE0_API_URL=$JUDGE0_API_URL
 
 # Install dependencies
 COPY package.json package-lock.json* yarn.lock* ./
